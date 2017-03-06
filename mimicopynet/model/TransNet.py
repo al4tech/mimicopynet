@@ -24,6 +24,8 @@ class TransNet(chainer.Chain):
         self.train_sample = 2**9#512サンプルの1出力です
         self.total_iter = 0
         self.loss = None
+        self.lossfrac = np.zeros(2) # loss平均計算用
+        self.acctable = np.zeros((2, 2)) # 正解率平均計算用
         super(TransNet, self).__init__(
             last1 = L.Convolution2D(16,128,1),
             last2 = L.Convolution2D(128,128,1),
@@ -38,9 +40,16 @@ class TransNet(chainer.Chain):
         self.optimizer = optimizers.Adam()
         self.optimizer.setup(self)
     def __call__(self, input_data):
+        '''
+        input_data <Variable (512*size, 1, 1)>
+        returns <Variable (1, 128, 1, size)>
+        '''
+        # print("input_data.shape:",input_data.shape) # (5120, 1, 1)
         h = self.embedId(input_data)
+        # print("h.shape:",h.shape) # (5120, 1, 1, 16)
         h = F.transpose(h, (1, 3, 2, 0))
 
+        # print("h.shape:",h.shape) # (1, 16, 1, 5120)
         #それぞれの層の出力をこのoutに足し合わせる（これはwavenetと同じような仕様）
         out = chainer.Variable(np.zeros(h.shape,dtype=np.float32))
 
@@ -70,8 +79,19 @@ class TransNet(chainer.Chain):
     def error(self, input_data, output_data):
         '''
         誤差は二乗誤差としておきます
+        input_data <Variable (512*size, 1, 1)>
+        output_data <Variable (1, 128, 1, size)>
         '''
-        err = F.mean_squared_error(self(input_data),output_data)
+        myoutput_data = self(input_data)
+        err = F.mean_squared_error(myoutput_data, output_data)
+        self.lossfrac += np.array([err.data, 1.])
+
+        y = (myoutput_data.data.flatten() > 0.5).astype(np.int64)
+        t = (output_data.data.flatten() > 0.5).astype(np.int64)
+        _ = np.array([len(y), np.sum(y), np.sum(t), np.sum(y*t)])
+        self.acctable += np.dot(np.array([[1,-1,-1,1],[0,0,1,-1],[0,1,0,-1],[0,0,0,1]]), _).reshape((2,2))
+        # いわゆる 2x2 表 (ネットワークの回答(0 or 1), 実際(0 or 1))
+        # TODO: このacctable更新のコードは超わかりづらい。高速かつわかり易く書き換えられないか？
         return err
     def set_training_data(self, train_in, train_out):
         self.train_in = train_in
@@ -89,8 +109,48 @@ class TransNet(chainer.Chain):
         batch_out = chainer.Variable(batch_out)
 
         #更新
-        self.zerograds()
+        self.cleargrads()
         self.loss = self.error(batch_in,batch_out)
         self.loss.backward()
         self.optimizer.update()
         self.total_iter += 1
+
+    def update(self, x, t, mode="train"):
+        '''
+        入力xと出力t（1バッチ分）のVariableを放り込んで学習。
+        mode=='test'ならloss計算のみ（学習なし）。
+        x <Variable (bsize, 512 * ssize) int32>
+        t <Variable (bsize, 128, ssize) float32>
+        '''
+        assert(x.shape[0]==t.shape[0])
+        assert(x.shape[1] % 512 == 0)
+        bsize = x.shape[0] # batch size
+        ssize = x.shape[1] // 512 # segment size
+
+        batch_in = F.reshape(F.transpose(x, (1, 0)), (512*ssize, bsize, 1))
+        batch_out = F.reshape(t, (bsize, 128, 1, ssize))
+        self.loss = self.error(batch_in, batch_out)
+        if (mode=='train'):
+            self.cleargrads()
+            self.loss.backward() # lossはscalarなのでいきなりこれでok
+            self.optimizer.update()
+            self.total_iter += 1
+        elif mode=='test':
+            pass
+        else:
+            print("mode must be 'train' or 'test'.")
+            raise ValueError
+
+    def aveloss(self, clear=False):
+        ret = self.lossfrac[0]/self.lossfrac[1]
+        if (clear): self.lossfrac = np.zeros(2)
+        return ret
+    def getacctable(self, clear=False):
+        ret = np.copy(self.acctable)
+        if (clear): self.acctable = np.zeros((2,2))
+        return ret
+
+
+
+
+
