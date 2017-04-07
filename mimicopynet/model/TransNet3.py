@@ -17,16 +17,21 @@ import scipy as sp
 
 
 
+
+
 class yosnet(chainer.Chain):
     '''
     フォワードモデルだけ
     '''
-    def __init__(self, embed_dim=16, a_dim=128):
-        self.embed_dim = embed_dim
+    def __init__(self, a_dim=128, slen=512, ssize=10):
         self.a_dim = a_dim
+        self.slen = slen # 512 一つのセグメントの長さ（wavのサンプル数）
+        self.ssize = ssize # 10 一つの入力あたりのセグメントの個数      
         super(yosnet, self).__init__(
-            l1 = L.Linear(None, 512),
-            l2 = L.Linear(None, 256),
+            l1 = L.Linear(None, 1280),
+            b1 = L.BatchNormalization(1280),
+            l2 = L.Linear(None, 320),
+            b2 = L.BatchNormalization(320),
             l3 = L.Linear(None, self.a_dim)
         )
     def __call__(self, x):
@@ -34,13 +39,12 @@ class yosnet(chainer.Chain):
         x <Variable (bs, ssize*512) int32>
         returns <Variable (bs, 128(=self.a_dim), ssize) float32> 0〜1で出して。
         '''
-        assert(x.shape[1] % 512==0)
-        ssize = x.shape[1]//512
+        assert(x.shape[1] == self.ssize * self.slen)
         bs = x.shape[0]
         h = chainer.Variable(x.data.astype(np.float32)/128-1)
-        h = F.reshape(h, (bs*ssize, 512))
-        y = F.sigmoid(self.l3(F.relu(self.l2(F.relu(self.l1(h)))))) # (bs*ssize, 128)
-        y = F.transpose(F.reshape(y, (bs, ssize, self.a_dim)), (0, 2, 1))
+        h = F.reshape(h, (bs*self.ssize, self.slen))
+        y = F.sigmoid(self.l3(self.b2(F.relu(self.l2(self.b1(F.relu(self.l1(h)))))))) # (bs*ssize, 128)
+        y = F.transpose(F.reshape(y, (bs, self.ssize, self.a_dim)), (0, 2, 1))
         return y
 
 
@@ -58,6 +62,8 @@ class wavenet(chainer.Chain):
         self.total_iter = 0
         self.loss = None
         self.a_dim = a_dim # 出力の次元
+        self.slen = 512 # 定義したけどまだ使ってない
+        self.ssize = 10 # 定義したけどまだ使ってない
         self.embed_dim = embed_dim
         self.lossfrac = np.zeros(2) # loss平均計算用
         self.acctable = np.zeros((2, 2)) # 正解率平均計算用
@@ -68,10 +74,10 @@ class wavenet(chainer.Chain):
         )
         dlt = [2**i for i in range(9+1)]
         for i,d in enumerate(dlt):
-            self.add_link('dc1-{}'.format(i), L.DilatedConvolution2D(self.embed_dim, 32, (1, 3), pad=(0,d), dilate=d))
-            self.add_link('c1-{}'.format(i), L.Convolution2D(32, self.embed_dim, 1))
-            self.add_link('dc2-{}'.format(i), L.DilatedConvolution2D(self.embed_dim, 32, (1, 3), pad=(0,d), dilate=d))
-            self.add_link('c2-{}'.format(i), L.Convolution2D(32, self.embed_dim, 1))
+            self.add_link('dc1-{}'.format(i), L.DilatedConvolution2D(None, 16, (1, 3), pad=(0,d), dilate=d))
+            self.add_link('c1-{}'.format(i), L.Convolution2D(16, 16, 1))
+            self.add_link('dc2-{}'.format(i), L.DilatedConvolution2D(16, 16, (1, 3), pad=(0,d), dilate=d))
+            self.add_link('c2-{}'.format(i), L.Convolution2D(16, 16, 1))
         self.optimizer = optimizers.Adam()
         self.optimizer.setup(self)
     def __call__(self, input_data):
@@ -81,6 +87,7 @@ class wavenet(chainer.Chain):
         '''       
         assert(input_data.shape[1] % 512==0)
         ssize = input_data.shape[1]//512
+        assert(ssize == self.ssize)
         bs = input_data.shape[0]
 
         h = F.reshape(F.transpose(input_data, (1,0)), (ssize*512, bs, 1))
@@ -96,6 +103,7 @@ class wavenet(chainer.Chain):
             h = F.reshape(h, (h.shape[0], 1, h.shape[1], h.shape[2]))
             # 前処理
             h = h / 128 - 1.
+        # h.shape == (bs, embed_dim, 1, ssize*512)
 
         #それぞれの層の出力をこのoutに足し合わせる（これはwavenetと同じような仕様）
         out = chainer.Variable(np.zeros(h.shape,dtype=np.float32))
@@ -115,18 +123,20 @@ class wavenet(chainer.Chain):
             out += _h
             h = h+_h
 
+        # out.shape == (bs, embed_dim, 1, ssize*512)
+
         #512サンプルのフレームで取りまとめて、0~1で出力する
         out = F.average_pooling_2d(out,(1,512))
         out = F.relu(out)
-        # print('*',out.shape) # (bs, 16, 1, ss)
+        # print('*',out.shape) # (bs, embed_dim, 1, ssize)
         out = self.last1(out)
         out = F.relu(out)
-        # print('**',out.shape) # (bs, 128, 1, ss)
+        # print('**',out.shape) # (bs, 128, 1, ssize)
         out = self.last2(out)
         out = F.sigmoid(out)
-        # print('***',out.shape) # (bs, 128, 1, ss)
+        # print('***',out.shape) # (bs, a_dim, 1, ssize)
         out = F.reshape(out, (bs, self.a_dim, ssize))
-        return out   
+        return out 
 
 
 
@@ -135,20 +145,31 @@ class wavenet(chainer.Chain):
 
 class TransNet3:#(chainer.Chain):
     '''
-    耳コピ用のクラスです．self.fmdlにフォワードモデル(chainer.Chain)を指定。
+    耳コピ用のクラスです．fmdlにフォワードモデル(chainer.Chain)を指定。
     音声データはmu=255のmu-lawエンコードした後のデータをonehotベクトルで入力します
     出力データは128個の音階の0～1データです．
-    '''
-    def __init__(self, embed_dim=16, a_dim=128):
-        self.mu = 255#μ-rawのμです
-        self.train_sample = 2**9#512サンプルの1出力です
-        self.total_iter = 0
-        self.loss = None
-        self.a_dim = a_dim # 出力の次元
-        self.embed_dim = embed_dim
 
+    fmdl.__call__(x) は
+    x <Variable (bs, ssize*512)> int32
+    returns <Variable (bs, 128(=self.a_dim), ssize)> float32
+    となってないといけない。
+    （と書いてあるが、このクラス内のコードではこれらを一切要請していない。
+    update()のxとt、error()のinput_dataとoutput_dataの型が
+    fmdlの入出力フォーマットと一致してさえいれば良い。）
+    '''
+    # def __init__(self, embed_dim=16, a_dim=128):
+    def __init__(self, fmdl, a_nn=list(range(128))):
+        # self.mu = 255#μ-rawのμです
+        # self.train_sample = 2**9#512サンプルの1出力です
+        # self.total_iter = 0
+        # self.loss = None
+        # self.a_dim = a_dim # 出力の次元
+        # self.embed_dim = embed_dim
+
+        self.fmdl = fmdl
         # self.fmdl = wavenet(embed_dim=embed_dim, a_dim=a_dim) # フォワード計算を外に出そう
-        self.fmdl = yosnet(embed_dim=embed_dim, a_dim=a_dim) # フォワード計算を外に出そう
+        # self.fmdl = yosnet(embed_dim=embed_dim, a_dim=a_dim) # フォワード計算を外に出そう
+        self.a_nn = a_nn
 
         self.lossfrac = np.zeros(2) # loss平均計算用
         self.acctable = np.zeros((2, 2),dtype=np.int64) # 正解率平均計算用
@@ -177,14 +198,16 @@ class TransNet3:#(chainer.Chain):
         y = (myoutput_data.data.flatten() > 0.5).astype(np.int64)
         t = (output_data.data.flatten() > 0.5).astype(np.int64)
         _ = np.array([len(y), np.sum(y), np.sum(t), np.sum(y*t)])
-        self.acctable += np.dot(np.array([[1,-1,-1,1],[0,0,1,-1],[0,1,0,-1],[0,0,0,1]]), _).reshape((2,2))
-        # いわゆる 2x2 表 (ネットワークの回答(0 or 1), 実際(0 or 1))
-        # TODO: このacctable更新のコードは超わかりづらい。高速かつわかり易く書き換えられないか？
+        self.acctable += np.dot(np.array([[1,-1,-1,1],[0,0,1,-1],[0,1,0,-1],[0,0,0,1]]), _).reshape((2,2)) # いわゆる 2x2 表 (ネットワークの回答(0 or 1), 実際(0 or 1)) # TODO: このacctable更新のコードは超わかりづらい。高速かつわかり易く書き換えられないか？
+        self.lastoutput = myoutput_data.data # array (bs, self.a_dim, ssize)
+        self.lastanswer = output_data.data # array (bs, self.a_dim, ssize)
         return err
+    '''
     def set_training_data(self, train_in, train_out):
         self.train_in = train_in
         self.train_out = train_out
         self.n = train_out.shape[1]
+    '''
     '''
     def learn(self,size): # （代わりにupdateを使ってます）（errorの引数フォーマット変えたので動かない）
         #適当なところから30*512サンプル分の教師データを抜き出す
@@ -216,7 +239,6 @@ class TransNet3:#(chainer.Chain):
             self.cleargrads()
             self.loss.backward() # lossはscalarなのでいきなりこれでok
             self.optimizer.update()
-            self.total_iter += 1
         elif mode=='test':
             pass
         else:
