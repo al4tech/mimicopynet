@@ -21,6 +21,17 @@ def export_graph(filename, vs):
     with open(filename, 'w') as o:
         o.write(g.dump())
 
+def mulaw(wav, mu=255):
+    wav = np.sign(wav)*np.log(1+mu*np.abs(wav))/np.log(1+mu)
+    # wav = np.round((wav + 1) / 2 * mu).astype(np.int32)  
+    wav = (wav + 1.) / 2 * mu
+    return wav  
+
+def quantize_linear(lot):
+    return [((tup[0]+1.)*256, tup[1]) for tup in lot]
+def quantize_mulaw(lot):
+    return [(mulaw(tup[0]), tup[1]) for tup in lot]
+
 def in_npy_out_npy_to_lot(in_npy, out_npy, q_sample=5120, a_sample=10, a_nn=list(range(128)), posratio=None, shuffle=True):
     '''
     list_of_tuple形式に変換します
@@ -47,6 +58,15 @@ def in_npy_out_npy_to_lot(in_npy, out_npy, q_sample=5120, a_sample=10, a_nn=list
     if (posratio is not None):
         # 正例の割合を調整するために、負例を減らす
         # positive segment の個数を調整しよう
+
+        # test_on_mnnpzをでposratioのオンオフで成績がめっちゃ変わる　なんでだろう
+        # →選ばれるサンプルは全然ランダムではないことがわかった。そこで、直後の3行を追加する。
+
+        # あと、そもそも負例を減らした状態でのF値と生の状態でのF値は大きく変わってしまう
+        # 負例は減らさずに、別の工夫をした方が良いかも？prioritized learningとか。
+        if (shuffle==False):
+            print('WARNING: posratio forces shuffling.')
+        np.random.shuffle(qa)
         pc = [np.count_nonzero(np.sum(d[1],axis=0)) for d in qa] # positive count
         sorted_idx = np.argsort(pc)[::-1]
         qa_new = []
@@ -95,6 +115,12 @@ def mndata_to_lot(mndata, q_sample=5120, a_sample=10, a_nn=list(range(128)), pos
     if (posratio is not None):
         # 正例の割合を調整するために、負例を減らす
         # positive segment の個数を調整しよう
+
+        # test_on_mnnpzをでposratioのオンオフで成績がめっちゃ変わる　なんでだろう
+        # →選ばれるサンプルは全然ランダムではないことがわかった。そこで、直後の3行を追加する。
+        if (shuffle==False):
+            print('WARNING: posratio forces shuffling.')
+        np.random.shuffle(qa)
         pc = [np.count_nonzero(np.sum(d[1],axis=0)) for d in qa] # positive count
         sorted_idx = np.argsort(pc)[::-1]
         qa_new = []
@@ -113,7 +139,7 @@ def mndata_to_lot(mndata, q_sample=5120, a_sample=10, a_nn=list(range(128)), pos
 
 
 
-def test_on_mid(model, mid_file):
+def test_on_mid(model, mid_file, showroll=True):
     '''
     midiファイルをどれくらい耳コピできるかを調べます
     model <chainer.Chain>: エージェントのモデル。というか学習済みのTransNet3()。update(x,t,mode)が存在している必要あり。
@@ -127,10 +153,10 @@ def test_on_mid(model, mid_file):
                                 q_sample=model.fmdl.ssize*model.fmdl.slen, # 10 * 512 # 1 * 5120
                                 a_sample=model.fmdl.ssize*model.fmdl.a_dim, # 10 * 1 # 1 * 1
                                 a_nn=model.a_nn, shuffle=False)
-    # ▲ in_npyではmu-law変換済みになっている。他方、mnnpz形式では生波形のままになっている。注意！
+    # ▲ in_npyではmu-law量子化済みになっている。他方、mnnpz形式では生波形のままになっている。注意！
     t0 = time.time()
     print('start testing.....................(',mid_file,')')
-    bs_normal = 30
+    bs_normal = 300
     mode = 'test'
     data = lot
     o_roll = [] # output roll
@@ -145,7 +171,7 @@ def test_on_mid(model, mid_file):
         a_roll += list(model.lastanswer.transpose(1,0,2).reshape(len(model.a_nn), -1).T) # リストの各要素は　長さ a_dim のリストである
         if (time.time() - t0 > 600 or idx+bs_normal>=len(data)):
             t0 = time.time()
-            print('mode', mode, '(',idx,'/',len(data),') aveloss', model.aveloss(clear=False))
+            print('mode', mode, '(',idx,'/',len(data),') aveloss', model.aveloss(clear=(idx+bs_normal>=len(data))))
             acc = model.getacctable(clear=(idx+bs_normal>=len(data)))
             precision = acc[1,1]/np.sum(acc[1,:])
             recall = acc[1,1]/np.sum(acc[:,1])
@@ -153,18 +179,18 @@ def test_on_mid(model, mid_file):
             print('acctable:  ', 'P:',precision,'R:',recall,'F:',fvalue)
             print(acc)
     print('done testing.')
-    import matplotlib.pyplot as plt
-    o_roll = np.array(o_roll).T
-    a_roll = np.array(a_roll).T
-    idx = np.linspace(0, o_roll.shape[1], 100).astype(np.int32)[:-1]
-    plt.subplot(211)
-    plt.imshow((o_roll[:,idx] > 0.5).astype(np.int32))
-    plt.subplot(212)
-    plt.imshow(a_roll[:,idx])
-    plt.show()
+    if (showroll):
+        import matplotlib.pyplot as plt
+        o_roll = np.array(o_roll).T
+        a_roll = np.array(a_roll).T
+        idx = np.linspace(0, o_roll.shape[1], 100).astype(np.int32)[:-1]
+        plt.subplot(211)
+        plt.imshow((o_roll[:,idx] > 0.5).astype(np.int32))
+        plt.subplot(212)
+        plt.imshow(a_roll[:,idx])
+        plt.show()
 
-
-def test_on_mnnpz(model, mnnpz_file):
+def test_on_mnnpz(model, mnnpz_file, quantize=quantize_linear, showroll=True):
     '''
     mnnpzファイルをどれくらい耳コピできるかを調べます
     model <chainer.Chain>: エージェントのモデル。というか学習済みのTransNet3()。update(x,t,mode)が存在している必要あり。
@@ -175,10 +201,12 @@ def test_on_mnnpz(model, mnnpz_file):
     '''
     lot = mnnpz_to_lot(mnnpz_file, q_sample=model.fmdl.ssize*model.fmdl.slen, # 10 * 512 # 1 * 5120
                                 a_sample=model.fmdl.ssize*model.fmdl.a_dim, # 10 * 1 # 1 * 1
-                                a_nn=model.a_nn, shuffle=False)
+                                a_nn=model.a_nn, shuffle=False, posratio=None)
+    lot = quantize(lot)
+
     t0 = time.time()
     print('start testing.....................(',mnnpz_file,')')
-    bs_normal = 30
+    bs_normal = 300
     mode = 'test'
     data = lot
     o_roll = [] # output roll
@@ -193,23 +221,25 @@ def test_on_mnnpz(model, mnnpz_file):
         a_roll += list(model.lastanswer.transpose(1,0,2).reshape(len(model.a_nn), -1).T) # リストの各要素は　長さ a_dim のリストである
         if (time.time() - t0 > 600 or idx+bs_normal>=len(data)):
             t0 = time.time()
-            print('mode', mode, '(',idx,'/',len(data),') aveloss', model.aveloss(clear=False))
-            acc = model.getacctable(clear=(idx+bs_normal>=len(data)))
+            endflg = (idx+bs_normal>=len(data))
+            print('mode', mode, '(',idx,'/',len(data),') aveloss', model.aveloss(clear=endflg))
+            acc = model.getacctable(clear=endflg)
             precision = acc[1,1]/np.sum(acc[1,:])
             recall = acc[1,1]/np.sum(acc[:,1])
             fvalue = 2*precision*recall/(recall+precision)
             print('acctable:  ', 'P:',precision,'R:',recall,'F:',fvalue)
             print(acc)
     print('done testing.')
-    import matplotlib.pyplot as plt
-    o_roll = np.array(o_roll).T
-    a_roll = np.array(a_roll).T
-    idx = np.linspace(0, o_roll.shape[1], 100).astype(np.int32)[:-1]
-    plt.subplot(211)
-    plt.imshow((o_roll[:,idx] > 0.5).astype(np.int32))
-    plt.subplot(212)
-    plt.imshow(a_roll[:,idx])
-    plt.show()
+    if (showroll):
+        import matplotlib.pyplot as plt
+        o_roll = np.array(o_roll).T
+        a_roll = np.array(a_roll).T
+        idx = np.linspace(0, o_roll.shape[1], 100).astype(np.int32)[:-1]
+        plt.subplot(211)
+        plt.imshow((o_roll[:,idx] > 0.5).astype(np.int32))
+        plt.subplot(212)
+        plt.imshow(a_roll[:,idx])
+        plt.show()
 
 
 def mid_to_in_npy_out_npy(mid_file):
@@ -269,7 +299,6 @@ def mnnpz_to_lot(mnnpz_file, q_sample=5120, a_sample=1, a_nn=list(range(128)), p
     mnnpz_file <str>: mnnpzファイル名　ただしglob.globに渡せるワイルドカード表現も可能。該当するファイル全てからデータを取得する。
     samplenum <None or int>: lotに含まれるサンプル数の上限。
     '''
-    import glob
     files = sorted(glob.glob(mnnpz_file))
     print("files matched:", len(files))
     lot = []
@@ -284,6 +313,128 @@ def mnnpz_to_lot(mnnpz_file, q_sample=5120, a_sample=1, a_nn=list(range(128)), p
         # 最後にシャッフル
         np.random.shuffle(lot)
     return lot    
+
+
+
+
+
+def get_train_test_lot(trainpath, trainsample, testpath, testsample, quantize=quantize_linear, stride=2, shuffle=True, posratio=None):
+    '''
+    trainpath = '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/2*/data.npz'
+    trainsample = 375000
+    testpath = '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1*/data.npz'
+    testsample = 125000
+    '''
+    lot = mnnpz_to_lot(trainpath,
+        q_sample=slen*ssize, a_sample=ssize, a_nn=a_nn, posratio=posratio, stride=stride, samplenum=trainsample, shuffle=shuffle)
+    # raw waveなのを 0〜255の整数階調に変換する（あとで元に戻すから二度手間なんだけど・・・）
+    train_lot = quantize(lot)
+
+    lot = mnnpz_to_lot(testpath,
+        q_sample=slen*ssize, a_sample=ssize, a_nn=a_nn, posratio=posratio, stride=stride, samplenum=testsample, shuffle=shuffle)
+    # raw waveなのを 0〜255の整数階調に変換する（あとで元に戻すから二度手間なんだけど・・・）
+    test_lot = quantize(lot)
+    print('train data len', len(train_lot))
+    print('test data len', len(test_lot))
+    print('q data shape:',train_lot[0][0].shape)
+    print('a data shape:',train_lot[0][1].shape)
+    return train_lot, test_lot
+
+
+a_nn = list(np.arange(60, 84)) # [60] 1音に限定した耳コピはもうやめた
+a_dim = len(a_nn)
+posratio = None # 正例の割合 0.5ももうやめ
+slen = 5120
+ssize = 1
+
+np.random.seed(0)
+
+
+mdl = mimicopynet.model.TransNet3(fmdl=mimicopynet.model.yosnet(a_dim=a_dim, slen=slen, ssize=ssize), a_nn=a_nn)
+# TransNet3: エージェント
+# yosnet, wavenet: 脳
+
+
+mdlfilename = "fmdl6084.model"
+try:
+    gototraining
+    serializers.load_npz(mdlfilename, mdl.fmdl)
+    print('loaded.')
+    # gototraining
+except: 
+    print('welcome to training!')
+    train_lot, test_lot = get_train_test_lot('/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/2*/data.npz', 375000,
+                                            '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1*/data.npz', 125000,
+                                            stride=4, quantize=quantize_linear, posratio=posratio)
+    train_with_priority = False
+    if (train_with_priority): # 推論を大きく誤った訓練データを優先的に学習させるオプション
+        # posterior = np.ones(len(data_train))/ansnum # 各訓練データについて「最近の回答時に正解ラベルに対して出力した事後確率」を格納しておくarray
+        logposterior = -np.inf + np.zeros(len(train_lot))
+        mcmcstepnum = 5 # 整数値を指定。0なら優先学習なし。大きくするほど優先学習の程度が強まる。
+        accepted_frac = np.zeros(2)
+    epochnum = 100
+    fmax = np.zeros(2)
+    t0 = time.time()
+    for epoch in range(epochnum):
+        print('epoch', epoch)
+        for data,mode in [(train_lot,'train'), (test_lot,'test')]:
+            bs_normal = 300
+            if (mode=='test' or (not train_with_priority)): # 優先学習なし
+                shuffled_idx = np.arange(len(data))
+                np.random.shuffle(shuffled_idx)
+                for idx in range(0,len(data),bs_normal):
+                    batch = np.array(data)[shuffled_idx[idx:idx+bs_normal]]
+                    bs = len(batch)
+                    x = Variable(np.array([b[0] for b in batch]).astype(np.int32))
+                    t = Variable(np.array([b[1] for b in batch]).astype(np.float32))
+                    mdl.update(x,t, mode=mode)
+            else: #優先学習あり
+                bnum = max(len(data)//bs_normal, 1)
+                # 「大きく誤った訓練データが高確率で含まれるようにバッチを構成する」
+                # ということを bnum 回繰り返す。
+                for i in range(bnum):
+                    idx = np.random.choice(len(data), bs_normal) # まず、叩き台のバッチを構成する。これは完全にランダム。
+                    
+                    for j in range(mcmcstepnum): # 上記で構成したバッチに修正を施す。「優先学習」が反映されるように。
+                        # 確率の比が 1/(最近の回答時に正解ラベルに対して出力した事後確率) となるように
+                        # 訓練データを選出したい。
+                        # 真面目にやるのではなく、MCMC（メトロポリス法）を使ってサンプリングすることを考え、
+                        # その最初の数ステップだけをやる、という実装。
+                        idx_sugg = np.random.choice(len(data), bs_normal) # 提案
+                        # acc_prob = np.minimum(1., posterior[idx]/(posterior[idx_sugg]+1e-12)) # 受理される確率
+                        acc_prob = np.exp(np.minimum(0., logposterior[idx] - logposterior[idx_sugg]))
+                        accidx = np.where(acc_prob > np.random.rand(bs_normal))[0] # 受理されたインデクス
+                        accepted_frac += np.array([len(accidx), bs_normal])
+                        idx[accidx] = idx_sugg[accidx] # バッチの更新
+                    batch = np.array(data)[idx]
+                    bs = len(batch)
+                    x = Variable(np.array([b[0] for b in batch]).astype(np.int32))
+                    t = Variable(np.array([b[1] for b in batch]).astype(np.float32))
+                    mdl.update(x,t, mode=mode)
+                    logposterior[idx] = mdl.logposterior
+            # 1epoch 終了後の処理
+            endflg = True # epoch途中で表示していた頃の名残
+            note = ''
+            if (mode=='train' and train_with_priority):
+                note = '[with priority (mcmc:'+str(mcmcstepnum)+')(accepted:'+str(accepted_frac[0]/accepted_frac[1])+')]'
+                accepted_frac = np.zeros(2)
+            print('mode', mode, note,'(len(data) =',len(data),') aveloss', mdl.aveloss(clear=endflg))
+            acc = mdl.getacctable(clear=endflg)
+            precision = acc[1,1]/np.sum(acc[1,:])
+            recall = acc[1,1]/np.sum(acc[:,1])
+            fvalue = 2*precision*recall/(recall+precision)
+            fmax[mode=='test'] = max(fmax[mode=='test'], fvalue)
+            print('acctable:  ', 'P:',precision,'R:',recall,'F:',fvalue,'(Fmax:',fmax[mode=='test'],')')
+            print(acc)
+            if (mode=='test' and fmax[1] == fvalue):
+                serializers.save_npz(mdlfilename, mdl.fmdl)
+                print('saved: '+mdlfilename)
+                # if (epoch==0 and idx==0 and mode=='train'):
+                #     export_graph("computation_graph",[mdl.loss])
+    # serializers.save_npz(mdlfilename, mdl.fmdl)
+# test_on_mid(mdl, "yos.mid")
+for f in glob.glob("/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1*/data.npz"):
+    test_on_mnnpz(mdl, f, quantize=quantize_linear, showroll=False)
 
 
 '''
@@ -372,122 +523,6 @@ midiworldで、正常にmid.npy変換できなかったファイルたち
 Aaron_Neville/Tell_It_Like_It_Is.mid
 '''
 
-
-
-
-
-
-
-def mulaw(wav, mu=255):
-    wav = np.sign(wav)*np.log(1+mu*np.abs(wav))/np.log(1+mu)
-    # wav = np.round((wav + 1) / 2 * mu).astype(np.int32)  
-    wav = (wav + 1.) / 2 * mu
-    return wav  
-
-def get_train_test_lot(trainpath, trainsample, testpath, testsample, scaling='linear'):
-    '''
-    trainpath = '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/2*/data.npz'
-    trainsample = 375000
-    testpath = '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1*/data.npz'
-    testsample = 125000
-    '''
-    lot = mnnpz_to_lot(trainpath,
-        q_sample=slen*ssize, a_sample=ssize, a_nn=a_nn, posratio=posratio, stride=2, samplenum=trainsample)
-    # raw waveなのを 0〜255の整数階調に変換する（あとで元に戻すから二度手間なんだけど・・・）
-    lot_new = []
-    for tup in lot:
-        # from: -1〜1 float / to: 0〜255の整数値
-        assert(min(tup[0])>=-1. and max(tup[0])<=1.)
-        if scaling=='linear':
-            lot_new.append(((tup[0]+1.)*256, tup[1])) # 線形変換 (TODO: mu-law)
-        elif scaling=='mulaw':
-            lot_new.append((mulaw(tup[0]), tup[1])) # mu-law
-        else:
-            raise ValueError
-    train_lot = lot_new
-
-    lot = mnnpz_to_lot(testpath,
-        q_sample=slen*ssize, a_sample=ssize, a_nn=a_nn, posratio=posratio, stride=2, samplenum=testsample)
-    # raw waveなのを 0〜255の整数階調に変換する（あとで元に戻すから二度手間なんだけど・・・）
-    lot_new = []
-    for tup in lot:
-        # from: -1〜1 float / to: 0〜255の整数値
-        assert(min(tup[0])>=-1. and max(tup[0])<=1.)
-        if scaling=='linear':
-            lot_new.append(((tup[0]+1.)*256, tup[1])) # 線形変換 (TODO: mu-law)
-        elif scaling=='mulaw':
-            lot_new.append((mulaw(tup[0]), tup[1])) # mu-law
-        else:
-            raise ValueError
-    test_lot = lot_new
-    print('train data len', len(train_lot))
-    print('test data len', len(test_lot))
-    print('q data shape:',train_lot[0][0].shape)
-    print('a data shape:',train_lot[0][1].shape)
-    return train_lot, test_lot
-
-
-a_nn = [60] # list(np.arange(60, 72)) # 1音に限定した耳コピはどうだろう
-a_dim = len(a_nn)
-posratio = None # 正例の割合
-slen = 5120
-ssize = 1
-
-np.random.seed(0)
-
-
-mdl = mimicopynet.model.TransNet3(fmdl=mimicopynet.model.yosnet(a_dim=a_dim, slen=slen, ssize=ssize), a_nn=a_nn)
-# TransNet3: エージェント
-# yosnet, wavenet: 脳
-
-
-mdlfilename = "fmdl60.model"
-try:
-    #hogehoge
-    serializers.load_npz(mdlfilename, mdl.fmdl)
-    print('loaded.')
-    hogehoge
-except: 
-    print('welcome to training!')
-#    train_lot, test_lot = get_train_test_lot('/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/2*/data.npz', 375000,
-#                                            '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1*/data.npz', 125000)
-    train_lot, test_lot = get_train_test_lot('/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/2*/data.npz', 1,
-                                            '/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1727/data.npz', None)
-    epochnum = 100
-    fmax = np.zeros(2)
-    t0 = time.time()
-    for epoch in range(epochnum):
-        print('epoch', epoch)
-        for data,mode in [(train_lot,'train'), (test_lot,'test')]:
-            np.random.shuffle(data) # ここでもシャッフル
-            bs_normal = 300
-            for idx in range(0,len(data),bs_normal):
-                batch = data[idx:idx+bs_normal]
-                bs = len(batch)
-                x = Variable(np.array([b[0] for b in batch]).astype(np.int32))
-                t = Variable(np.array([b[1] for b in batch]).astype(np.float32))
-                mdl.update(x,t, mode=mode)
-                if (time.time() - t0 > 600 or idx+bs_normal>=len(data)):
-                    t0 = time.time()
-                    endflg = (idx+bs_normal>=len(data))
-                    print('mode', mode, '(',idx,'/',len(data),') aveloss', mdl.aveloss(clear=endflg))
-                    acc = mdl.getacctable(clear=endflg)
-                    precision = acc[1,1]/np.sum(acc[1,:])
-                    recall = acc[1,1]/np.sum(acc[:,1])
-                    fvalue = 2*precision*recall/(recall+precision)
-                    fmax[mode=='test'] = max(fmax[mode=='test'], fvalue)
-                    print('acctable:  ', 'P:',precision,'R:',recall,'F:',fvalue,'(Fmax:',fmax[mode=='test'],')')
-                    print(acc)
-                    if (mode=='test' and fmax[1] == fvalue):
-                        pass
-                        # serializers.save_npz(mdlfilename, mdl.fmdl)
-                        # print('saved: '+mdlfilename)
-                # if (epoch==0 and idx==0 and mode=='train'):
-                #     export_graph("computation_graph",[mdl.loss])
-    # serializers.save_npz(mdlfilename, mdl.fmdl)
-# test_on_mid(mdl, "yos.mid")
-for f in glob.glob("/Users/yoshidayuuki/Downloads/musicnet/musicnet_data/1*/data.npz"):
-    test_on_mnnpz(mdl, f)
 
 
 

@@ -34,16 +34,17 @@ class yosnet(chainer.Chain):
             b2 = L.BatchNormalization(320),
             l3 = L.Linear(None, self.a_dim)
         )
-    def __call__(self, x):
+    def __call__(self, x, mode='train'):
         '''
         x <Variable (bs, ssize*512) int32>
         returns <Variable (bs, 128(=self.a_dim), ssize) float32> 0〜1で出して。
         '''
+        testflg = (mode=='test')
         assert(x.shape[1] == self.ssize * self.slen)
         bs = x.shape[0]
         h = chainer.Variable(x.data.astype(np.float32)/128-1)
         h = F.reshape(h, (bs*self.ssize, self.slen))
-        y = F.sigmoid(self.l3(self.b2(F.relu(self.l2(self.b1(F.relu(self.l1(h)))))))) # (bs*ssize, 128)
+        y = F.sigmoid(self.l3(self.b2(F.relu(self.l2(self.b1(F.relu(self.l1(h)),testflg))),testflg))) # (bs*ssize, 128)
         y = F.transpose(F.reshape(y, (bs, self.ssize, self.a_dim)), (0, 2, 1))
         return y
 
@@ -178,12 +179,12 @@ class TransNet3:#(chainer.Chain):
         self.optimizer.setup(self.fmdl)
     def cleargrads(self):
         self.fmdl.cleargrads()
-    def error(self, input_data, output_data):
+    def error(self, input_data, output_data, mode='train'):
         '''
         input_data <Variable (bs, ssize*512)> int32
         output_data <Variable (bs, 128(=self.a_dim), ssize)> float32
         '''
-        myoutput_data = self.fmdl(input_data)
+        myoutput_data = self.fmdl(input_data, mode=mode)
         # print("myoutput_data.data---------------------------------")
         # print(myoutput_data.data.reshape((30,10))) # (30, 1, 1, 10) # ほとんど全部同じ値を出力している・・・
 
@@ -194,13 +195,13 @@ class TransNet3:#(chainer.Chain):
         err = F.sum(err)/err.data.size
 
         self.lossfrac += np.array([err.data, 1.])
-
         y = (myoutput_data.data.flatten() > 0.5).astype(np.int64)
         t = (output_data.data.flatten() > 0.5).astype(np.int64)
         _ = np.array([len(y), np.sum(y), np.sum(t), np.sum(y*t)])
         self.acctable += np.dot(np.array([[1,-1,-1,1],[0,0,1,-1],[0,1,0,-1],[0,0,0,1]]), _).reshape((2,2)) # いわゆる 2x2 表 (ネットワークの回答(0 or 1), 実際(0 or 1)) # TODO: このacctable更新のコードは超わかりづらい。高速かつわかり易く書き換えられないか？
         self.lastoutput = myoutput_data.data # array (bs, self.a_dim, ssize)
         self.lastanswer = output_data.data # array (bs, self.a_dim, ssize)
+        self.logposterior = np.sum(np.sum(np.log(np.maximum(F.absolute(1. - output_data - myoutput_data).data, 1e-14)), axis=2), axis=1) # array (bs)
         return err
     '''
     def set_training_data(self, train_in, train_out):
@@ -234,7 +235,7 @@ class TransNet3:#(chainer.Chain):
         x <Variable (bsize, ssize * 512) int32>
         t <Variable (bsize, 128(=self.a_dim), ssize) float32>
         '''
-        self.loss = self.error(x, t)
+        self.loss = self.error(x, t, mode=mode)
         if (mode=='train'):
             self.cleargrads()
             self.loss.backward() # lossはscalarなのでいきなりこれでok
@@ -244,7 +245,6 @@ class TransNet3:#(chainer.Chain):
         else:
             print("mode must be 'train' or 'test'.")
             raise ValueError
-
     def aveloss(self, clear=False):
         ret = self.lossfrac[0]/self.lossfrac[1]
         if (clear): self.lossfrac = np.zeros(2)
