@@ -8,7 +8,7 @@ mimicopynet/data/__pycache__/midi_to_wav.cpython-35.pyc
 mimicopynet/data/__pycache__/wav_to_input.cpython-35.pyc
 mimicopynet/__pycache__/__init__.cpython-35.pyc
 mimicopynet/__pycache__/makedata.cpython-35.pyc
-musicnnet.npz
+musicnet.npz
 musicnet_metadata.csv
 train.mid
 train.wav
