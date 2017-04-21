@@ -8,6 +8,8 @@ Created on Sun Dec 25 18:18:17 2016
 import numpy as np
 import pandas as pd
 import os
+import glob
+import librosa
 
 def piano_train_data(file, meta, out_dir):
     train_data = np.load(open(file,'rb'),encoding='latin1')
@@ -28,3 +30,19 @@ def piano_train_data(file, meta, out_dir):
                 out_npy[nn,i] = 1.
         print(in_npy.shape, out_npy.shape, out_sample.shape)
         np.savez(out_dir+'/'+str(id)+'.npz', wave=in_npy, score=out_npy, score_sample=out_sample)
+
+def make_cqt_inout(data_dir, file):
+    spect,score = [],[]
+    for path in glob.glob("%s/*.npz"%data_dir):
+        data = np.load(path)
+        wave_ = data["wave"]
+        spect_ = np.abs(librosa.core.cqt(wave_))
+        score_ = data["score"]
+        length = min([spect_.shape[1],score_.shape[1]])
+        spect_, score_ = spect_[:,:length], score_[:,:length]
+        spect.append(spect_)
+        score.append(score_)
+    spect = np.concatenate(spect, axis=1)
+    score = np.concatenate(score, axis=1)
+    print(spect.shape, score.shape)
+    np.savez(file, spect=spect, score=score)
