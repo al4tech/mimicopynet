@@ -11,3 +11,5 @@ from .midi_to_output import midi_to_output
 from .make_random_song import make_random_song
 from .midi_to_wav import midi_to_wav
 from .musicnet_to_data import piano_train_data,make_cqt_inout
+from .wavescoredata import wavescoredata, load_wsdata
+from .musicnet_to_wsdata import solo_piano_to_wsdata
