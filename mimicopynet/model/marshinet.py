@@ -7,6 +7,10 @@ Created on Sat Dec 24 18:25:35 2016
 """
 
 import numpy as np
+import scipy as sp
+import scipy.io
+import librosa
+import pretty_midi
 import chainer
 from chainer import cuda, Function, gradient_check, report, training, utils, Variable
 from chainer import datasets, iterators, optimizers, serializers
@@ -56,10 +60,12 @@ class CNN_(chainer.Chain):
 
 class CNN(object):
     def __init__(self):
-        self.model = L.Classifier(CNN_(), F.sigmoid_cross_entropy, f_measure_accuracy)
+        #self.model = L.Classifier(CNN_(), F.sigmoid_cross_entropy, f_measure_accuracy)
+        self.model = CNN_()
+        self.classifier = L.Classifier(self.model, F.sigmoid_cross_entropy, f_measure_accuracy)
 
         self.optimizer = optimizers.Adam()
-        self.optimizer.setup(self.model)
+        self.optimizer.setup(self.classifier)
     def load_cqt_inout(self, file):
         data = np.load(file)
         score = data["score"]
@@ -74,7 +80,7 @@ class CNN(object):
         score = [score[:,i*width:(i+1)*width] for i in range(int(length/width))]
         self.score = np.array(score).astype(np.int32)
     def eval_call(self, x, t):
-        self.model(x, True, t)
+        self.classifier(x, True, t)
     def learn(self):
         dataset = chainer.datasets.TupleDataset(self.spect, self.score)
         p = 0.999
@@ -88,12 +94,54 @@ class CNN(object):
         updater = training.StandardUpdater(train_iter, self.optimizer)
         trainer = training.Trainer(updater, (50000, 'iteration'), out='result')
 
-        trainer.extend(extensions.Evaluator(test_iter, self.model, eval_func=self.eval_call),trigger=(500, 'iteration'))
+        trainer.extend(extensions.Evaluator(test_iter, self.classifier, eval_func=self.eval_call),trigger=(500, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(50, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy', 'main/loss', 'validation/main/accuracy', 'validation/main/loss']))
         trainer.extend(extensions.ProgressBar(update_interval=5))
-        trainer.extend(extensions.snapshot_object(self.model.predictor,
+        trainer.extend(extensions.snapshot_object(self.model,
                                                   'model_{.updater.iteration}.npz',
                                                   serializers.save_npz,
                                                   trigger=(500, 'iteration')))
         trainer.run()
+    def load_model(self, file):
+        serializers.load_npz(file, self.model)
+    def transcript(self, wavfile, midfile):
+        data = sp.io.wavfile.read(wavfile)[1]
+        data = data.astype(np.float64)
+        data = data.mean(axis=1)
+        data /= np.abs(data).max()
+        
+        input_data = np.abs(librosa.core.cqt(data)).astype(np.float32)
+        width = 128
+        length = input_data.shape[1]
+        input_data = [input_data[:,i*width:(i+1)*width] for i in range(int(length/width)+1)]
+        input_data = [np.expand_dims(np.expand_dims(input_data_, axis=0), axis=0) for input_data_ in input_data]
+        
+        score = []
+        for input_data_ in input_data:
+            score_ = (self.model(input_data_, test=True)[0].data>0.)*1
+            score.append(score_)
+            
+        score = np.concatenate(score, axis=1)
+        
+        pitch, time = np.where(score==1)
+        dif = [time[i+1]-time[i] for i in range(len(pitch)-1)]
+        end = np.concatenate([np.where(np.array(dif)!=1)[0],[len(time)-1]])
+        start = np.concatenate([[0],end[:-1]+1])
+        pitch = pitch[start]
+        end = time[end]
+        start = time[start]
+        
+        hz = 44100
+        tempo = 120
+        res = 960
+        pm = pretty_midi.PrettyMIDI(resolution=res, initial_tempo=tempo)
+        instrument = pretty_midi.Instrument(0)
+
+        sample_t = (512/hz)
+        for s_,e_,p_ in zip(start, end, pitch):
+            note = pretty_midi.Note(velocity=100, pitch=p_, start=s_*sample_t, end=e_*sample_t)
+            instrument.notes.append(note)
+        pm.instruments.append(instrument)
+        pm.write(midfile)
+                
