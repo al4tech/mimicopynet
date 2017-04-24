@@ -129,8 +129,8 @@ class CNN(object):
             input_data = np.concatenate([input_data.real, input_data.imag], axis=0).astype(np.float32)
 
         width = 128
-        length = input_data.shape[1]
-        input_data = [input_data[:,i*width:(i+1)*width] for i in range(int(length/width)+1)]
+        length = input_data.shape[2]
+        input_data = [input_data[:,:,i*width:(i+1)*width] for i in range(int(length/width)+1)]
         input_data = [np.expand_dims(input_data_, axis=0) for input_data_ in input_data]
 
         score = []
