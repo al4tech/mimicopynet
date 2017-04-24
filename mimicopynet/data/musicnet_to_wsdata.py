@@ -10,7 +10,7 @@ import pandas as pd
 import os
 from .wavescoredata import wavescoredata
 
-def solo_piano_to_wsdata(file, meta, out_dir):
+def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
     '''
     musicnetのピアノ曲をwsdataに変換します
 
@@ -18,11 +18,17 @@ def solo_piano_to_wsdata(file, meta, out_dir):
     file: musicnet.npzのパス
     meta: musicnet_metadata.csvのパス
     out_dir: wsdataファイルを保存するディレクトリ
+    ensemble: どの楽器の曲を，wsdataにするか ex:"Solo Piano"
+            Noneの時は全部
     '''
     data = np.load(open(file,'rb'),encoding='latin1')
     os.makedirs(out_dir, exist_ok=True)
     meta = pd.read_csv(meta)
-    ids = meta[meta['ensemble']=="Solo Piano"]["id"].astype(str).tolist()
+    if ensemble is None:
+        ids = meta["id"].astype(str).tolist()
+    else:
+        ids = meta[meta['ensemble']==ensemble]["id"].astype(str).tolist()
+    print(ids)
     for id in ids:#idは文字列
         wsdata = wavescoredata()
         print('processing: id =',id)

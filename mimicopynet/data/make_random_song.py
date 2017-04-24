@@ -9,7 +9,8 @@ Created on Sun Dec 25 18:20:17 2016
 import numpy as np
 import pretty_midi
 
-def make_random_song(file,lmb_start=50,lmb_stop=1,seed=0,tempo=120,res=960,len_t=1000):
+def make_random_song(file,lmb_start=50,lmb_stop=1,seed=0,tempo=120,res=960,
+                     len_t=1000):
     '''
     ポアソン過程でランダムな曲を作って、midiファイルに出力します。
     file <str> :出力midiファイル名
@@ -43,7 +44,7 @@ def make_random_song(file,lmb_start=50,lmb_stop=1,seed=0,tempo=120,res=960,len_t
                 break
             note = pretty_midi.Note(velocity=np.random.randint(50,127), pitch=note_number, start=start, end=stop) #noteはNoteOnEventとNoteOffEventに相当します。
             instrument.notes.append(note)
-    
+
 
     pm.instruments.append(instrument)
     pm.write(file) #midiファイルを書き込みます。

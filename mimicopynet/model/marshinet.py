@@ -110,20 +110,20 @@ class CNN(object):
         data = data.astype(np.float64)
         data = data.mean(axis=1)
         data /= np.abs(data).max()
-        
+
         input_data = np.abs(librosa.core.cqt(data)).astype(np.float32)
         width = 128
         length = input_data.shape[1]
         input_data = [input_data[:,i*width:(i+1)*width] for i in range(int(length/width)+1)]
         input_data = [np.expand_dims(np.expand_dims(input_data_, axis=0), axis=0) for input_data_ in input_data]
-        
+
         score = []
         for input_data_ in input_data:
             score_ = (self.model(input_data_, test=True)[0].data>0.)*1
             score.append(score_)
-            
+
         score = np.concatenate(score, axis=1)
-        
+
         pitch, time = np.where(score==1)
         dif = [time[i+1]-time[i] for i in range(len(pitch)-1)]
         end = np.concatenate([np.where(np.array(dif)!=1)[0],[len(time)-1]])
@@ -131,7 +131,7 @@ class CNN(object):
         pitch = pitch[start]
         end = time[end]
         start = time[start]
-        
+
         hz = 44100
         tempo = 120
         res = 960
@@ -144,4 +144,3 @@ class CNN(object):
             instrument.notes.append(note)
         pm.instruments.append(instrument)
         pm.write(midfile)
-                

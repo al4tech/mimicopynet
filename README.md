@@ -36,7 +36,7 @@ import mimicopynet as mcn
 musicnetからピアノのソロ曲のみを，wavescoredataというmimicopynetのデータ形式に変換します．
 
 ```python
-mcn.data.solo_piano_to_wsdata("musicnet.npz", "musicnet_metadata.csv", "wsdata") #3つめの引数は，wavescoredataが保存されるディレクトリ
+mcn.data.musicnet_to_wsdata("musicnet.npz", "musicnet_metadata.csv", "wsdata") #3つめの引数は，wavescoredataが保存されるディレクトリ
 ```
 
 wavescoredataから，CQT(Constant Q Transform)を行い，訓練データに整形します．

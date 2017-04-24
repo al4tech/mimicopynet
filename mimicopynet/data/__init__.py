@@ -7,5 +7,5 @@ Created on Sun Dec 25 18:22:05 2016
 """
 
 from .wavescoredata import wavescoredata, load_wsdata
-from .musicnet_to_wsdata import solo_piano_to_wsdata
+from .musicnet_to_wsdata import musicnet_to_wsdata
 from .preprocess import make_cqt_inout
