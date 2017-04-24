@@ -29,6 +29,7 @@ def make_cqt_inout(data_dir, file, mode='abs'):
 
     spect,score = [],[]
     for path in glob.glob("%s/*.wsd"%data_dir):
+        print('processing: wsdata =',path)
         data = load_wsdata(path)
         if mode == 'abs':
             spect_ = np.abs(librosa.core.cqt(data.wave))
@@ -43,7 +44,7 @@ def make_cqt_inout(data_dir, file, mode='abs'):
         print(spect_.shape, score_.shape)
         spect.append(spect_)
         score.append(score_)
-    spect = np.concatenate(spect, axis=1)
+    spect = np.concatenate(spect, axis=2)
     score = np.concatenate(score, axis=1)
-    print(spect.shape, score.shape)
-    #np.savez(file, spect=spect, score=score)
+    print("shape",spect.shape, score.shape)
+    np.savez(file, spect=spect, score=score)

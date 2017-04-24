@@ -40,13 +40,14 @@ mcn.data.musicnet_to_wsdata("musicnet.npz", "musicnet_metadata.csv", "wsdata", "
 ```
 
 wavescoredataから，CQT(Constant Q Transform)を行い，訓練データに整形します．
+modeは'abs'と'raw'の２種類があります．
 ```python
-mcn.data.make_cqt_inout("wsdata","testdata.npz")
+mcn.data.make_cqt_inout("wsdata","testdata.npz", mode='abs')
 ```
 
 CNNモデルをインスタンス化します．
 ```python
-model = mcn.model.CNN()
+model = mcn.model.CNN(input_cnl=1)
 ```
 
 訓練データをロードして，学習させます．
@@ -62,6 +63,18 @@ model.load_model("result/model_50000.npz")
 model.transcript("test.wav", "test.mid")
 ```
 
+CQTの実部と虚部を使うコードは以下の通りです．
+```
+mcn.data.make_cqt_inout("wsdata", "data_rawmode.npz", mode='raw')
+
+model = mcn.model.CNN(input_cnl=2)
+
+model.load_cqt_inout("data_rawmode.npz")
+model.learn()
+
+#model.load_model("result/model_50000.npz")
+#model.transcript("Niyodo - piano.wav", "test.mid", mode='raw')
+```
 ## Contribution
 
 marshi

@@ -21,13 +21,14 @@ from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
 
 class CNN_(chainer.Chain):
-    def __init__(self, window=512):
+    def __init__(self, input_cnl=1):
+        #TODO: input_cnl mode などはconfigクラスとして一まとめにした方が良いかも
         super(CNN_, self).__init__(
-            conv1 = L.Convolution2D(1, 16, ksize=(13,13), pad=(6,6)),
+            conv1 = L.Convolution2D(input_cnl, 16, ksize=(13,13), pad=(6,6)),
             conv2 = L.Convolution2D(16, 32, ksize=(13,13), pad=(6,6)),
             conv3 = L.Convolution2D(32, 64, ksize=(13,13), pad=(6,6)),
             conv4 = L.Convolution2D(64, 128, ksize=(84,1), pad=(0,0)),
-            bn1 = L.BatchNormalization(1),
+            bn1 = L.BatchNormalization(input_cnl),
             bn2 = L.BatchNormalization(16),
             bn3 = L.BatchNormalization(32),
             bn4 = L.BatchNormalization(64)
@@ -59,26 +60,30 @@ class CNN_(chainer.Chain):
         return h
 
 class CNN(object):
-    def __init__(self):
+    def __init__(self, input_cnl=1):
         #self.model = L.Classifier(CNN_(), F.sigmoid_cross_entropy, f_measure_accuracy)
-        self.model = CNN_()
+        self.model = CNN_(input_cnl=input_cnl)
         self.classifier = L.Classifier(self.model, F.sigmoid_cross_entropy, f_measure_accuracy)
 
         self.optimizer = optimizers.Adam()
         self.optimizer.setup(self.classifier)
     def load_cqt_inout(self, file):
+        '''
+        spect np.narray [chl, pitch, seqlen]
+        score np.narray [pitch, seqlen]
+        '''
         data = np.load(file)
         score = data["score"]
         spect = data["spect"]
 
         width = 128
-        length = spect.shape[1]
+        length = spect.shape[2]
 
-        spect = [spect[:,i*width:(i+1)*width] for i in range(int(length/width))]
-        spect = np.array(spect).astype(np.float32)
-        self.spect = np.expand_dims(spect, axis=1)
+        spect = [spect[:,:,i*width:(i+1)*width] for i in range(int(length/width))]
+        self.spect = np.array(spect).astype(np.float32)
         score = [score[:,i*width:(i+1)*width] for i in range(int(length/width))]
         self.score = np.array(score).astype(np.int32)
+        print("loaded!",self.spect.shape, self.score.shape)
     def eval_call(self, x, t):
         self.classifier(x, True, t)
     def learn(self):
@@ -105,17 +110,28 @@ class CNN(object):
         trainer.run()
     def load_model(self, file):
         serializers.load_npz(file, self.model)
-    def transcript(self, wavfile, midfile):
+    def transcript(self, wavfile, midfile, mode='abs'):
+
+        #TODO: ここの処理はpreprocess.pyに回す
+        assert mode=='abs' or mode=='raw'
+
         data = sp.io.wavfile.read(wavfile)[1]
         data = data.astype(np.float64)
         data = data.mean(axis=1)
         data /= np.abs(data).max()
 
-        input_data = np.abs(librosa.core.cqt(data)).astype(np.float32)
+        if mode == 'abs':
+            input_data = np.abs(librosa.core.cqt(data)).astype(np.float32)
+            input_data = np.expand_dims(input_data, axis=0)
+        elif mode == 'raw':
+            input_data = librosa.core.cqt(data)
+            input_data = np.expand_dims(input_data, axis=0)
+            input_data = np.concatenate([input_data.real, input_data.imag], axis=0).astype(np.float32)
+
         width = 128
         length = input_data.shape[1]
         input_data = [input_data[:,i*width:(i+1)*width] for i in range(int(length/width)+1)]
-        input_data = [np.expand_dims(np.expand_dims(input_data_, axis=0), axis=0) for input_data_ in input_data]
+        input_data = [np.expand_dims(input_data_, axis=0) for input_data_ in input_data]
 
         score = []
         for input_data_ in input_data:
