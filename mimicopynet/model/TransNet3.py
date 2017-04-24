@@ -14,6 +14,7 @@ import chainer.functions as F
 import chainer.links as L
 import matplotlib.pyplot as plt
 import scipy as sp
+import librosa
 
 def tocpu(x):
     if not isinstance(x, np.ndarray):
@@ -36,7 +37,7 @@ def quantize_mulaw(lot):
     return [(mulaw(tup[0]), tup[1]) for tup in lot]
 """
 
-def get_filters(nns, siz=4096, cqt=False, fs=44100):
+def get_filters(nns, siz=4096, fs=44100):
     ret = []
     for nn in nns:
         f = 441. * 2.**((nn-69)/12)
@@ -52,6 +53,8 @@ def get_spectrum(X, s, filters): # ピッチのスペクトラム
         ret.append(np.sum(X[s-len(fi)//2:s-len(fi)//2+len(fi)] * fi, axis=-1))
     return np.array(ret) # Xが1-dimなら1-dim (#filter), 2-dim(#batch, #sample)なら2-dimになる (#filter, #batch)  中身は複素数なことに注意
 
+def get_spectrum2(X, hop_length=512): # 波形X(#sample)をCQT。帰ってくるのは (84, #sample//hop_length+1) の complex
+    return librosa.core.cqt(X, sr=44100, hop_length=hop_length)
 
 
 class yosnet_ft(chainer.Chain):
@@ -65,14 +68,18 @@ class yosnet_ft(chainer.Chain):
         self.ssize = ssize # 1 一つの入力あたりのセグメントの個数
         self.filters = get_filters(list(np.arange(21, 109)), siz=slen)  
         super(yosnet_ft, self).__init__(
-            l1 = L.Linear(None, 128),
-            b1 = L.BatchNormalization(128),
-            l2 = L.Linear(None, 128),
-            b2 = L.BatchNormalization(128),
-            l3 = L.Linear(None, 128),
-            b3 = L.BatchNormalization(128),
-            l4 = L.Linear(None, 128),
-            b4 = L.BatchNormalization(128),
+            # l1 = L.Linear(None, 128),
+            l1 = L.Convolution2D(None, 4, ksize=(25,5),pad=(12,1)),
+            b1 = L.BatchNormalization(4),
+            # l2 = L.Linear(None, 128),
+            l2 = L.Convolution2D(4, 4, ksize=(15,5),pad=(7,1)),
+            b2 = L.BatchNormalization(4),
+            # l3 = L.Linear(None, 128),
+            l3 = L.Convolution2D(4, 4, ksize=(11,5),pad=(5,1)),
+            b3 = L.BatchNormalization(4),
+            # l4 = L.Linear(None, 128),
+            l4 = L.Convolution2D(4, 4, ksize=(9,5),pad=(4,1)),
+            b4 = L.BatchNormalization(4),            
             l5 = L.Linear(None, 128),
             b5 = L.BatchNormalization(128),                                   
             l6 = L.Linear(None, self.a_dim)
@@ -80,12 +87,12 @@ class yosnet_ft(chainer.Chain):
     def preprocess(self, lot): # 入力データの前処理をこいつで規定する
         ret = []
         for x,y in lot:
-            cs = get_spectrum(x, len(x)//2, self.filters)
-            ret.append((np.array([c.real for c in cs] + [c.imag for c in cs], dtype=np.float32), y))
+            cs = get_spectrum2(x) # cqt version # (84, 11) complex
+            ret.append((np.array([np.real(cs),np.imag(cs)], dtype=np.float32), y))
         return ret
     def __call__(self, x, mode='train'):
         '''
-        x <Variable (bs, #filters*2) float32>
+        x <Variable (bs, 2, 84, 11) float32>
         returns <Variable (bs, 128(=self.a_dim), ssize) float32> 0〜1で出して。
         '''
         testflg = (mode=='test')
@@ -93,6 +100,7 @@ class yosnet_ft(chainer.Chain):
         y = x
         for i in range(1,6):
             y = self['b'+str(i)](F.relu(self['l'+str(i)](y)),testflg)
+            # print('i=',i,y.shape)
         y = F.sigmoid(self.l6(y)) # (bs, ssize*128)
         y = F.transpose(F.reshape(y, (bs, self.ssize, self.a_dim)), (0, 2, 1))
         return y
@@ -263,8 +271,6 @@ class TransNet3:#(chainer.Chain):
         self.fmdl = fmdl
         # self.fmdl = wavenet(embed_dim=embed_dim, a_dim=a_dim) # フォワード計算を外に出そう
         # self.fmdl = yosnet(embed_dim=embed_dim, a_dim=a_dim) # フォワード計算を外に出そう
-        self.a_nn = a_nn
-
         self.lossfrac = np.zeros(2) # loss平均計算用
         self.acctable = np.zeros((2, 2),dtype=np.int64) # 正解率平均計算用
         self.optimizer = optimizers.Adam()
@@ -296,31 +302,6 @@ class TransNet3:#(chainer.Chain):
         self.lastanswer = output_data.data # array (bs, self.a_dim, ssize)
         self.logposterior = np.sum(np.sum(np.log(np.maximum(tocpu(F.absolute(1. - output_data - myoutput_data).data), 1e-14)), axis=2), axis=1) # array (bs)
         return err
-    '''
-    def set_training_data(self, train_in, train_out):
-        self.train_in = train_in
-        self.train_out = train_out
-        self.n = train_out.shape[1]
-    '''
-    '''
-    def learn(self,size): # （代わりにupdateを使ってます）（errorの引数フォーマット変えたので動かない）
-        #適当なところから30*512サンプル分の教師データを抜き出す
-        idx = np.random.randint(self.n-size)
-        batch_in = self.train_in[idx*self.train_sample:(idx+size)*self.train_sample]
-        batch_in = batch_in.reshape(self.train_sample*size,1,1)
-        batch_in = chainer.Variable(batch_in)
-        batch_out = self.train_out[:,idx:idx+size]
-        batch_out = batch_out.reshape(1,self.a_dim,1,size)
-        batch_out = batch_out.astype(np.float32)
-        batch_out = chainer.Variable(batch_out)
-
-        #更新
-        self.cleargrads()
-        self.loss = self.error(batch_in,batch_out)
-        self.loss.backward()
-        self.optimizer.update()
-        self.total_iter += 1
-    '''
     def update(self, x, t, mode="train"):
         '''
         入力xと出力t（1バッチ分）のVariableを放り込んで学習。
