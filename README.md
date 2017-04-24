@@ -1,26 +1,29 @@
 mimicopynet
 ====
 
-mimicpynetはピアノ演奏の耳コピモデルをベンチマークするための実装です。chainerで実装されています。
-まだ開発途中で、今後コメントやPEP8に準拠した書き方にしていきます。
+mimicopynetは耳コピ(music transcription)を自動的に行うことを目的とした，pythonパッケージです．
+chainerで実装されています．
+
 
 ## Requirement
 python3で実装されています。
 
 以下必要なパッケージ(anacondaでデフォルトで入っているものは除く)
-・chainer
-・pretty_midi
-・midi2audio
-その他必要なもの
-・FluidSynth
 
-chainer,midi2audioはpipでインストールできます。
+- chainer
+- pretty_midi
+- librosa
 
 pretty_midiは以下のところからクローンして、インストールしてください。
 https://github.com/craffel/pretty-midi
 
-Fluidsynthのインストールはここを参考してください
-http://kujirahand.com/blog/index.php?Mac%20OS%20X%E3%81%A7MIDI%E3%83%95%E3%82%A1%E3%82%A4%E3%83%AB%E3%82%92%E3%82%AA%E3%83%BC%E3%83%87%E3%82%A3%E3%82%AA%E3%81%AB%E5%A4%89%E6%8F%9B%E3%81%99%E3%82%8B%E6%96%B9%E6%B3%95
+現在，MusicNetを使うことを前提としています．
+MusicNetはMIRで研究されることを目的とした，音楽のデータセットです．
+https://homes.cs.washington.edu/~thickstn/musicnet.html
+
+それぞれ以下のリンクからダウンロードしてください．
+- メタデータ(https://homes.cs.washington.edu/~thickstn/media/musicnet_metadata.csv)
+- npzファイル(https://homes.cs.washington.edu/~thickstn/media/musicnet.npz)
 
 ## Usage
 
@@ -30,14 +33,43 @@ http://kujirahand.com/blog/index.php?Mac%20OS%20X%E3%81%A7MIDI%E3%83%95%E3%82%A1
 import mimicopynet as mcn
 ```
 
-musicnetからnpz形式で，訓練データを作成する
+musicnetからピアノのソロ曲のみを，wavescoredataというmimicopynetのデータ形式に変換します．
 
 ```python
-mcn.data.piano_train_data("musicnet.npz", "musicnet_metadata.csv", "musicnet_data")
+mcn.data.solo_piano_to_wsdata("musicnet.npz", "musicnet_metadata.csv", "wsdata") #3つめの引数は，wavescoredataが保存されるディレクトリ
 ```
 
-データ読み込み
-
+wavescoredataから，CQT(Constant Q Transform)を行い，訓練データに整形します．
 ```python
-data = np.load("musicnet_data/1733.npz")
+mcn.data.make_cqt_inout("wsdata","testdata.npz")
 ```
+
+CNNモデルをインスタンス化します．
+```python
+model = mcn.model.CNN()
+```
+
+訓練データをロードして，学習させます．
+```
+model.load_cqt_inout("testdata.npz")
+model.learn()
+```
+
+学習されたモデルは，resultディレクトリに保存されます．
+学習済みモデルをロードして，耳コピを行います．
+```
+model.load_model("result/model_50000.npz")
+model.transcript("test.wav", "test.mid")
+```
+
+## Contribution
+
+marshi
+
+yos1up
+
+## Author
+
+marshi
+
+yos1up
