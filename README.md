@@ -47,7 +47,7 @@ mcn.data.make_cqt_inout("wsdata","testdata.npz", mode='abs')
 
 CNNモデルをインスタンス化します．
 ```python
-model = mcn.model.CNN(input_cnl=1)
+model = mcn.model.BasicCNN(input_cnl=1)
 ```
 
 訓練データをロードして，学習させます．
@@ -67,7 +67,7 @@ CQTの実部と虚部を使うコードは以下の通りです．
 ```
 mcn.data.make_cqt_inout("wsdata", "data_rawmode.npz", mode='raw')
 
-model = mcn.model.CNN(input_cnl=2)
+model = mcn.model.BasicCNN(input_cnl=2)
 
 model.load_cqt_inout("data_rawmode.npz")
 model.learn()

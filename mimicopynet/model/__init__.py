@@ -7,4 +7,4 @@ Created on Thu Dec 22 16:15:47 2016
 """
 
 from .TransNet3 import TransNet3, yosnet, wavenet, yosnet_ft
-from .marshinet import CNN
+from .BasicCNN import BasicCNN

@@ -20,16 +20,16 @@ import chainer.links as L
 from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
 
-class CNN_(chainer.Chain):
+class BasicCNN_(chainer.Chain):
     '''
-    下のCNNで使うChain
+    下のBasicCNNで使うChain
     '''
     def __init__(self, input_cnl=1):
         '''
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
         #TODO: input_cnl mode などはconfigクラスとして一まとめにした方が良いかも
-        super(CNN_, self).__init__(
+        super(BasicCNN_, self).__init__(
             conv1 = L.Convolution2D(input_cnl, 4, ksize=(13,13), pad=(6,6)),
             conv2 = L.Convolution2D(4, 8, ksize=(13,13), pad=(6,6)),
             conv3 = L.Convolution2D(8, 16, ksize=(13,13), pad=(6,6)),
@@ -67,17 +67,17 @@ class CNN_(chainer.Chain):
         h = h[:,:,0]
         return h
 
-class CNN(object):
+class BasicCNN(object):
     '''
     スペクトル×時間の２次元画像から，それぞれの時間における耳コピを行うモデル
-    self.model: CNN_のインスタンス
+    self.model: BasicCNN_のインスタンス
     self.classifier: 分類するためのクラス
     '''
     def __init__(self, input_cnl=1):
         '''
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
-        self.model = CNN_(input_cnl=input_cnl)
+        self.model = BasicCNN_(input_cnl=input_cnl)
         self.classifier = L.Classifier(self.model, F.sigmoid_cross_entropy,
                                        f_measure_accuracy)
 
