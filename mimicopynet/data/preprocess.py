@@ -18,8 +18,8 @@ def make_cqt_inout(data_dir, file, mode='abs'):
     data_dir: wsdataが保存されたディレクトリ
     file: 出力ファイル
     model: CQTからどんな値を抽出するか
-        'abs' 絶対値
-        'raw' 実部と虚部をそのままだす
+        'abs' 絶対値(chl=1)
+        'raw' 実部と虚部をそのままだす(chl=2)
 
     npz内データ
     spect np.narray [chl, pitch, seqlen]

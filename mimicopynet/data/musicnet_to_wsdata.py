@@ -31,7 +31,8 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
     for id in ids:#idは文字列
         wsdata = wavescoredata()
         print('processing: id =',id)
-        x, y = data[id] # x: 波形 (ndarray<float: -1~1> (num_of_sample,))、y: 楽譜データ (intervaltree)
+        x, y = data[id] # x: 波形 (ndarray<float: -1~1> (num_of_sample,))
+                        # y: 楽譜データ (intervaltree)
         in_npy = x
         intvl = 512
         out_sample = np.array(range(0,len(x),intvl))

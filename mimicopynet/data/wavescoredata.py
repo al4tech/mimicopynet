@@ -10,9 +10,11 @@ import pickle
 
 class wavescoredata(object):
     '''
+    mimicopynetのデータ形式
+
     ピアノ曲の音データと，楽譜データをnumpy形式でもつクラスです．
 
-    wave: 音の波形データ
+    wave: 音の波形データ(44100Hz)
     score: wave512サンプルごとに対応する楽譜データ
     score_sample: それぞれのサンプルの最初のインデックス
     '''
