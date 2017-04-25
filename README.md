@@ -6,6 +6,7 @@ chainerで実装されています．
 
 
 ## Requirement
+### Python環境
 python3で実装されています。
 
 以下必要なパッケージ(anacondaでデフォルトで入っているものは除く)
@@ -15,9 +16,10 @@ python3で実装されています。
 - librosa
 
 pretty_midiは以下のところからクローンして、インストールしてください。
-https://github.com/craffel/pretty-midi
+https://github.com/craffel/pretty-midi  
 
-現在，MusicNetを使うことを前提としています．
+### データセット
+現在，データとしてMusicNetを使うことを前提としています．
 MusicNetはMIRで研究されることを目的とした，音楽のデータセットです．
 https://homes.cs.washington.edu/~thickstn/musicnet.html
 
@@ -73,14 +75,23 @@ model.load_cqt_inout("data_rawmode.npz")
 model.learn()
 
 #model.load_model("result/model_50000.npz")
-#model.transcript("Niyodo - piano.wav", "test.mid", mode='raw')
+#model.transcript("test.wav", "test.mid", mode='raw')
 ```
+
+## Future Work
+まだまだ，mimicopynetは改善していきます．
+例えば，今はある音程のピアノの音がなっているかの２値判別の問題を解いていますが，音がなり始めかどうかの２値判別の方が良いかもしれません．
+
+今後キリの良いところで英語化をしていく予定です．
+
 ## Contribution
 
-marshi(Yoshikawa Masashi)
+marshi(Yoshikawa Masashi)  
 yos1up(Yoshida Yuki)
+
+コードの分量はmarshiが多いと思いますが，yos1upには色々議論したりして，多大な貢献をしていただきました．そもそも，最初にディープラーニング耳コピを始めたのはyos1upでした．
 
 ## Author
 
-marshi(Yoshikawa Masashi)
+marshi(Yoshikawa Masashi)  
 yos1up(Yoshida Yuki)
