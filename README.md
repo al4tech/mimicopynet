@@ -77,12 +77,10 @@ model.learn()
 ```
 ## Contribution
 
-marshi
-
-yos1up
+marshi(Yoshikawa Masashi)
+yos1up(Yoshida Yuki)
 
 ## Author
 
-marshi
-
-yos1up
+marshi(Yoshikawa Masashi)
+yos1up(Yoshida Yuki)
