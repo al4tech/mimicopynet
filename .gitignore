@@ -1,16 +1,3 @@
-mimicopynet/model/__pycache__/__init__.cpython-35.pyc
-mimicopynet/model/__pycache__/TransNet.cpython-35.pyc
-mimicopynet/model/__pycache__/TransNet2.cpython-35.pyc
-mimicopynet/data/__pycache__/__init__.cpython-35.pyc
-mimicopynet/data/__pycache__/make_random_song.cpython-35.pyc
-mimicopynet/data/__pycache__/midi_to_output.cpython-35.pyc
-mimicopynet/data/__pycache__/midi_to_wav.cpython-35.pyc
-mimicopynet/data/__pycache__/wav_to_input.cpython-35.pyc
-mimicopynet/__pycache__/__init__.cpython-35.pyc
-mimicopynet/__pycache__/makedata.cpython-35.pyc
+*/__pycache__/*
 musicnet.npz
 musicnet_metadata.csv
-train.mid
-train.wav
-train_in.npy
-train_out.npy
