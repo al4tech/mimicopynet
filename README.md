@@ -4,6 +4,7 @@ mimicopynet
 mimicopynetは耳コピ(music transcription)を自動的に行うことを目的とした，pythonパッケージです．
 chainerで実装されています．
 
+現在は，音源をスペクトル分解し，周波数×時間の画像を用意したあと，その画像から，それぞれの時間に置いて，任意のピッチの音がなっているかを判定するCNN(BasicCNN)を用意しています．
 
 ## Requirement
 ### Python環境
