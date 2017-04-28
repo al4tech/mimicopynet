@@ -7,10 +7,6 @@ Created on Sat Dec 24 18:25:35 2016
 """
 
 import numpy as np
-import scipy as sp
-import scipy.io
-import librosa
-import pretty_midi
 import chainer
 from chainer import cuda, Function, gradient_check, report, training, utils, Variable
 from chainer import datasets, iterators, optimizers, serializers
@@ -19,6 +15,7 @@ import chainer.functions as F
 import chainer.links as L
 from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
+from ..data import make_cqt_input, score_to_midi
 
 class BasicCNN_(chainer.Chain):
     '''
@@ -140,33 +137,13 @@ class BasicCNN(object):
         trainer.run()
     def load_model(self, file):
         serializers.load_npz(file, self.model)
-    def transcript(self, wavfile, midfile, mode='abs'):
+    def __call__(self, input_data):
         '''
-        学習したモデルを使って，耳コピをするメソッド
-        wavfile: 耳コピしたいWavファイルのファイル名(44100,2ch想定)
-        midfile: 耳コピして生成される，midファイル名
-        model: CQTからどんな値を抽出するか
-            'abs' 絶対値(chl=1)
-            'raw' 実部と虚部をそのままだす(chl=2)
+        学習したモデルを動かします
+
+        input: np.narray [chl, pitch, seqlen]
+        ret:  np.narray [pitch, seqlen]
         '''
-
-        #TODO: ここの処理はpreprocess.pyに回す
-        assert mode=='abs' or mode=='raw'
-
-        data = sp.io.wavfile.read(wavfile)[1]
-        data = data.astype(np.float64)
-        data = data.mean(axis=1)
-        data /= np.abs(data).max()
-
-        if mode == 'abs':
-            input_data = np.abs(librosa.core.cqt(data)).astype(np.float32)
-            input_data = np.expand_dims(input_data, axis=0)
-        elif mode == 'raw':
-            input_data = librosa.core.cqt(data)
-            input_data = np.expand_dims(input_data, axis=0)
-            input_data = np.concatenate([input_data.real, input_data.imag],
-                                        axis=0).astype(np.float32)
-
         width = 128
         length = input_data.shape[2]
         input_data = [input_data[:,:,i*width:(i+1)*width]
@@ -179,26 +156,17 @@ class BasicCNN(object):
             score_ = (self.model(input_data_, test=True)[0].data>0.)*1
             score.append(score_)
 
-        score = np.concatenate(score, axis=1)
-
-        pitch, time = np.where(score==1)
-        dif = [time[i+1]-time[i] for i in range(len(pitch)-1)]
-        end = np.concatenate([np.where(np.array(dif)!=1)[0],[len(time)-1]])
-        start = np.concatenate([[0],end[:-1]+1])
-        pitch = pitch[start]
-        end = time[end]
-        start = time[start]
-
-        hz = 44100
-        tempo = 120
-        res = 960
-        pm = pretty_midi.PrettyMIDI(resolution=res, initial_tempo=tempo)
-        instrument = pretty_midi.Instrument(0)
-
-        sample_t = (512/hz)
-        for s_,e_,p_ in zip(start, end, pitch):
-            note = pretty_midi.Note(velocity=100, pitch=p_, start=s_*sample_t,
-                                    end=e_*sample_t)
-            instrument.notes.append(note)
-        pm.instruments.append(instrument)
-        pm.write(midfile)
+        output = np.concatenate(score, axis=1)
+        return output
+    def transcript(self, wavfile, midfile, mode='abs'):
+        '''
+        学習したモデルを使って，耳コピをするメソッド
+        wavfile: 耳コピしたいWavファイルのファイル名(44100,2ch想定)
+        midfile: 耳コピして生成される，midファイル名
+        model: CQTからどんな値を抽出するか
+            'abs' 絶対値(chl=1)
+            'raw' 実部と虚部をそのままだす(chl=2)
+        '''
+        input_data = make_cqt_input(wavfile, mode=mode)
+        score = self(input_data)
+        score_to_midi(score, midfile)
