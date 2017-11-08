@@ -18,8 +18,9 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
     file: musicnet.npzのパス
     meta: musicnet_metadata.csvのパス
     out_dir: wsdataファイルを保存するディレクトリ
-    ensemble: どの楽器の曲を，wsdataにするか ex:"Solo Piano"
+    ensemble: どの楽器編成の曲を，wsdataにするか ex:"Solo Piano"
             Noneの時は全部
+             (楽器編成を指定する文字列については musicnet_metadata.csv 参照)
     '''
     data = np.load(open(file,'rb'),encoding='latin1')
     os.makedirs(out_dir, exist_ok=True)
@@ -28,9 +29,9 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
         ids = meta["id"].astype(str).tolist()
     else:
         ids = meta[meta['ensemble']==ensemble]["id"].astype(str).tolist()
-    for id in ids:#idは文字列
+    for h,id in eumerate(ids):#idは数値ではなく文字列
         wsdata = wavescoredata()
-        print('processing: id =',id)
+        print('processing: id =',id,'(',h+1,'/',len(ids),')')
         x, y = data[id] # x: 波形 (ndarray<float: -1~1> (num_of_sample,))
                         # y: 楽譜データ (intervaltree)
         in_npy = x
@@ -42,8 +43,11 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
             nns = [n[2][1] for n in y[s]]
             for nn in nns:
                 out_npy[nn,i] = 1.
-        print(in_npy.shape, out_npy.shape, out_sample.shape)
+        print('    .wave.shape:', in_npy.shape, '.score.shape:', out_npy.shape, 'score_sample.shape:', out_sample.shape)
         wsdata.wave = in_npy
         wsdata.score = out_npy
         wsdata.score_sample = out_sample
-        wsdata.save(out_dir+'/'+str(id)+'.wsd')
+        savefilename = out_dir+'/'+str(id)+'.wsd'
+        wsdata.save(savefilename)
+        print('    saved:',savefilename)
+    print('Done.')
