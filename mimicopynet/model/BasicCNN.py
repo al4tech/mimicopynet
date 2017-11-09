@@ -190,7 +190,7 @@ class BasicCNN(object):
         self.classifier(x, t)と同様の使い方をする．
         '''
         self.classifier(x, True, t)
-    def learn(self):
+    def learn(self, iter_num=300000):
         '''
         学習をするメソッド
         '''
@@ -205,7 +205,7 @@ class BasicCNN(object):
                                              shuffle=False)
 
         updater = training.StandardUpdater(train_iter, self.optimizer)
-        trainer = training.Trainer(updater, (300000, 'iteration'), out='result')
+        trainer = training.Trainer(updater, (iter_num, 'iteration'), out='result')
 
         trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
@@ -219,7 +219,7 @@ class BasicCNN(object):
         trainer.extend(extensions.snapshot_object(self.model,
                                             'model_{.updater.iteration}.npz',
                                             serializers.save_npz),
-                                            trigger=(500, 'iteration'))
+                                            trigger=(5000, 'iteration'))
         trainer.run()
     def load_model(self, file):
         serializers.load_npz(file, self.model)
