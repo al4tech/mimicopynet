@@ -29,7 +29,7 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
         ids = meta["id"].astype(str).tolist()
     else:
         ids = meta[meta['ensemble']==ensemble]["id"].astype(str).tolist()
-    for h,id in eumerate(ids):#idは数値ではなく文字列
+    for h,id in enumerate(ids):#idは数値ではなく文字列
         wsdata = wavescoredata()
         print('processing: id =',id,'(',h+1,'/',len(ids),')')
         x, y = data[id] # x: 波形 (ndarray<float: -1~1> (num_of_sample,))
