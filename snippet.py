@@ -33,7 +33,7 @@ if args.transcript is None: # 学習モード
     model.load_cqt_inout("thedata_raw.npz")
     print('Done.')
     print('Start learning...')
-    model.learn()
+    model.learn(iter_num=10000000)
     print('Learning Done.')
 else: # 推論（耳コピ）モード
     model.load_model("result/model_1000000.npz")
