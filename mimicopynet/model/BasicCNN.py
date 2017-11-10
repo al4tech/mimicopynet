@@ -189,7 +189,7 @@ class BasicCNN(object):
         テスト用にClassifierを呼ぶ
         self.classifier(x, t)と同様の使い方をする．
         '''
-        self.classifier(x, True, t)
+        self.classifier(x, True, t) #TODO: これは何を返す？ Trueは何？
     def learn(self, iter_num=300000):
         '''
         学習をするメソッド
@@ -210,7 +210,7 @@ class BasicCNN(object):
         trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
                                             trigger=(500, 'iteration'))
-        trainer.extend(extensions.LogReport(trigger=(50, 'iteration')))
+        trainer.extend(extensions.LogReport(trigger=(500, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy',
                                                'main/loss',
                                                'validation/main/accuracy',
@@ -219,7 +219,7 @@ class BasicCNN(object):
         trainer.extend(extensions.snapshot_object(self.model,
                                             'model_{.updater.iteration}.npz',
                                             serializers.save_npz),
-                                            trigger=(5000, 'iteration'))
+                                            trigger=(50000, 'iteration'))
         trainer.run()
     def load_model(self, file):
         serializers.load_npz(file, self.model)
