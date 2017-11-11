@@ -36,7 +36,7 @@ if args.transcript is None: # 学習モード
     model.learn(iter_num=10000000)
     print('Learning Done.')
 else: # 推論（耳コピ）モード
-    model.load_model("result/model_1000000.npz")
+    model.load_model("result171110/model_1000000.npz")
     print("transcripting from", args.transcript[0], "to", args.transcript[1], "...", end='')
-    model.transcript(args.transcript[0], args.transcript[1])
+    model.transcript(args.transcript[0], args.transcript[1], mode='raw', imgfile='pianoroll.pdf')
     print("Done.")

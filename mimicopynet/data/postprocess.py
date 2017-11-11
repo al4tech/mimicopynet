@@ -15,7 +15,7 @@ def score_to_midi(score, midfile):
     音がなっているかのscoreデータから
     midiファイルを生成します
 
-    score: np.narray [pitch, seqlen]
+    score: np.narray [pitch, seqlen] 各要素は 0 or 1 であること。 
     midfile: midiファイル名
     '''
     pitch, time = np.where(score==1)
@@ -39,3 +39,39 @@ def score_to_midi(score, midfile):
         instrument.notes.append(note)
     pm.instruments.append(instrument)
     pm.write(midfile)
+
+def score_to_image(score, imgfile):
+    '''
+    音がなっているかのscoreデータから
+    ピアノロール画像を生成します
+
+    score: np.narray [pitch, seqlen] 各要素は 0 以上 1 以下にすること推奨
+    imgfile: 出力ファイル名　(pdfからまず対応予定)
+    '''
+    import matplotlib.pyplot as plt
+    width = 2048
+
+    padded_score = np.zeros((score.shape[0], (score.shape[1]+width-1)//width*width)) + np.nan
+    padded_score[:,:score.shape[1]] = score
+    score = padded_score
+
+    num_row = score.shape[1]//width
+    fig = plt.figure(figsize=(20,4+2*num_row))
+    for i in range(num_row):
+        plt.subplot(num_row, 1, 1+i)
+        plt.imshow(score[:,i*width:(i+1)*width], origin='lower')
+    plt.subplots_adjust(bottom=0.02, left=0.05, right=0.95, top=0.98, hspace=0.0001)
+    plt.savefig(imgfile)
+
+
+
+
+
+
+
+
+
+
+
+
+

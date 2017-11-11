@@ -15,7 +15,7 @@ import chainer.functions as F
 import chainer.links as L
 from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
-from ..data import make_cqt_input, score_to_midi
+from ..data import make_cqt_input, score_to_midi, score_to_image
 
 class BasicCNN_(chainer.Chain):
     '''
@@ -93,10 +93,18 @@ class MarioCNN_(chainer.Chain):
             conv2 = L.Convolution2D(4, 8, ksize=(49,3), pad=(24,1), stride=(1,2)),
             conv3 = L.Convolution2D(8, 16, ksize=(3,3), pad=(1,1), stride=(2,2)),
             conv4 = L.Convolution2D(16, 128, ksize=(84,1), pad=(0,0)),
+            deconv1 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
+            deconv2 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
+            deconv3 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
+            deconv4 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
             bn1 = L.BatchNormalization(input_cnl),
             bn2 = L.BatchNormalization(4),
             bn3 = L.BatchNormalization(8),
-            bn4 = L.BatchNormalization(16)
+            bn4 = L.BatchNormalization(16),
+            bn5 = L.BatchNormalization(128),
+            bn6 = L.BatchNormalization(16),
+            bn7 = L.BatchNormalization(8),
+            bn8 = L.BatchNormalization(4)
         )
         self.cnt_call = 0
 
@@ -181,15 +189,21 @@ class BasicCNN(object):
         score = [score[:,i*width:(i+1)*width] for i in range(length//width)]
         self.score = score # xp.array(score)
         print("Loaded!")
-        print('number of data (== len(self.spect) == len(self.score)):', len(self.spect))
-        print('shape of each spect data:', self.spect[0].shape, self.spect[0].dtype)
-        print('shape of each score data:', self.score[0].shape, self.score[0].dtype)
+        print(' number of data (== len(self.spect) == len(self.score)):', len(self.spect))
+        print(' shape of each spect data:', self.spect[0].shape, self.spect[0].dtype)
+        print(' shape of each score data:', self.score[0].shape, self.score[0].dtype)
     def eval_call(self, x, t):
         '''
         テスト用にClassifierを呼ぶ
         self.classifier(x, t)と同様の使い方をする．
+
+        x: (bs, cnl, pitch_in, width)
+        t: (bs, pitch_out, width)
         '''
-        self.classifier(x, True, t) #TODO: これは何を返す？ Trueは何？
+        self.classifier(x, True, t) #これはlossを返す。TODO: Trueは何？
+        
+        # self.classfier.y: (bs, pitch_out, width)
+
     def learn(self, iter_num=300000):
         '''
         学習をするメソッド
@@ -209,7 +223,7 @@ class BasicCNN(object):
 
         trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
-                                            trigger=(500, 'iteration'))
+                                            trigger=(1, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(500, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy',
                                                'main/loss',
@@ -226,7 +240,8 @@ class BasicCNN(object):
     def __call__(self, input_data):
         '''
         学習したモデルを動かします
-        TODO: gpu対応
+        !! 返り値を pre-sigmoid に変更しました(以前は pre-sigmoid を step-function したもの(0 or 1)を返していた)
+        TODO: gpu対応？
 
         input: np.narray [chl, pitch, seqlen]
         ret:  np.narray [pitch, seqlen]
@@ -234,18 +249,28 @@ class BasicCNN(object):
         width = 128
         length = input_data.shape[2]
         input_data = [input_data[:,:,i*width:(i+1)*width]
-                      for i in range(int(length/width)+1)]
+                      for i in range(length//width+1)]
         input_data = [np.expand_dims(input_data_, axis=0)
-                      for input_data_ in input_data]
+                      for input_data_ in input_data] # each element: (1, cnl, 84, 128)
 
+        bs = 1
         score = []
-        for input_data_ in input_data:
+        for i in range(0, len(input_data), bs):
+            minibatch = np.concatenate(input_data[i:i+bs], axis=0)
+            # score_ = (self.model(minibatch, test=True).data>0.)*1
+            # # self.model は pre-sigmoid な値を出力するので、閾値は 0 で OK
+            score_ = self.model(minibatch, test=True).data
+            score += list(score_)
+        '''
+        for input_data_ in input_data: # ミニバッチサイズ1で動かしてる
             score_ = (self.model(input_data_, test=True)[0].data>0.)*1
+            # self.model は pre-sigmoid な値を出力するので、閾値は 0 で OK
             score.append(score_)
+        '''
 
         output = np.concatenate(score, axis=1)
         return output
-    def transcript(self, wavfile, midfile, mode='abs'):
+    def transcript(self, wavfile, midfile, imgfile=None, mode='abs'):
         '''
         学習したモデルを使って，耳コピをするメソッド
         wavfile: 耳コピしたいWavファイルのファイル名(44100,2ch想定)
@@ -255,5 +280,10 @@ class BasicCNN(object):
             'raw' 実部と虚部をそのままだす(chl=2)
         '''
         input_data = make_cqt_input(wavfile, mode=mode)
-        score = self(input_data)
-        score_to_midi(score, midfile)
+        pre_sigmoid_score = self(input_data)
+        digital_score = (pre_sigmoid_score > 0.) * 1 # 0と1
+        sigmoided_score = 1. / (1. + np.exp(-pre_sigmoid_score)) # 0以上1以下
+
+        score_to_midi(digital_score, midfile)
+        if imgfile is not None:
+            score_to_image(sigmoided_score, imgfile)
