@@ -125,12 +125,12 @@ class MarioCNN_(chainer.Chain):
 
             if self.skip:
                 bs = h.shape[0]
-                zero_bs_4_24_64 = Variable(np.zeros([bs, 4, 24, 64]).astype(np.float32))
-                zero_bs_4_20_64 = Variable(np.zeros([bs, 4, 20, 64]).astype(np.float32))
-                zero_bs_8_24_32 = Variable(np.zeros([bs, 8, 24, 32]).astype(np.float32))
-                zero_bs_8_20_32 = Variable(np.zeros([bs, 8, 20, 32]).astype(np.float32))
-                zero_bs_16_24_16 = Variable(np.zeros([bs, 16, 24, 16]).astype(np.float32))
-                zero_bs_16_20_16 = Variable(np.zeros([bs, 16, 20, 16]).astype(np.float32))
+                zero_bs_4_24_64 = Variable(self.xp.zeros([bs, 4, 24, 64]).astype(self.xp.float32))
+                zero_bs_4_20_64 = Variable(self.xp.zeros([bs, 4, 20, 64]).astype(self.xp.float32))
+                zero_bs_8_24_32 = Variable(self.xp.zeros([bs, 8, 24, 32]).astype(self.xp.float32))
+                zero_bs_8_20_32 = Variable(self.xp.zeros([bs, 8, 20, 32]).astype(self.xp.float32))
+                zero_bs_16_24_16 = Variable(self.xp.zeros([bs, 16, 24, 16]).astype(self.xp.float32))
+                zero_bs_16_20_16 = Variable(self.xp.zeros([bs, 16, 20, 16]).astype(self.xp.float32))
 
 
             h = self.bn1(h)
@@ -196,7 +196,7 @@ class BasicCNN(object):
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
         # self.model = BasicCNN_(input_cnl=input_cnl)
-        self.model = MarioCNN_(input_cnl=input_cnl, skip=True)
+        self.model = MarioCNN_(input_cnl=input_cnl, skip=True,)
         if gpu is not None:
             cuda.get_device(gpu).use()
             self.model.to_gpu(gpu)
