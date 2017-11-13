@@ -234,7 +234,7 @@ class BasicCNN(object):
         print(trainn,len(dataset)-trainn)
         train,test = chainer.datasets.split_dataset_random(dataset, trainn)
 
-        train_iter = iterators.SerialIterator(train, batch_size=100, shuffle=True)
+        train_iter = iterators.SerialIterator(train, batch_size=10, shuffle=True)
         test_iter = iterators.SerialIterator(test, batch_size=10, repeat=False,
                                              shuffle=False)
 
