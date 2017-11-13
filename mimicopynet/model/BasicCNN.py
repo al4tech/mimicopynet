@@ -91,12 +91,12 @@ class MarioCNN_(chainer.Chain):
         super(MarioCNN_, self).__init__(
             conv1 = L.Convolution2D(input_cnl, 4, ksize=(49,3), pad=(24,1), stride=(1,2)),
             conv2 = L.Convolution2D(4, 8, ksize=(49,3), pad=(24,1), stride=(1,2)),
-            conv3 = L.Convolution2D(8, 16, ksize=(3,3), pad=(1,1), stride=(2,2)),
-            conv4 = L.Convolution2D(16, 128, ksize=(84,1), pad=(0,0)),
-            deconv1 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
-            deconv2 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
-            deconv3 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
-            deconv4 = L.Deconvolution2D(128, 16, ksize=(), pad=(), stride=()),
+            conv3 = L.Convolution2D(8, 16, ksize=(3,3), pad=(1,1), stride=(1,2)),
+            conv4 = L.Convolution2D(16, 128, ksize=(84,16), pad=(0,0)),
+            deconv1 = L.Deconvolution2D(128, 16, ksize=(128,16), pad=(0,0)),
+            deconv2 = L.Deconvolution2D(16, 8, ksize=(3,3), pad=(1,1), stride=(1,2), outsize=(128,32)),
+            deconv3 = L.Deconvolution2D(8, 4, ksize=(49,3), pad=(24,1), stride=(1,2), outsize=(128,64)),
+            deconv4 = L.Deconvolution2D(4, 1, ksize=(49,3), pad=(24,1), stride=(1,2), outsize=(128,128)),
             bn1 = L.BatchNormalization(input_cnl),
             bn2 = L.BatchNormalization(4),
             bn3 = L.BatchNormalization(8),
@@ -121,29 +121,47 @@ class MarioCNN_(chainer.Chain):
             # (bs, cnl, 84, 128)
             h = x
 
-            h = self.bn1(h)#, test=test)
+            h = self.bn1(h)
             h = self.conv1(h)
-            h = F.leaky_relu(h)
-
-            # (bs, 4, 84, 128)
-
-            h = self.bn2(h)#, test=test)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (4, 84, 64)), h.data.shape
+            # (bs, 4, 84, 64)
+            h = self.bn2(h)
             h = self.conv2(h)
-            h = F.leaky_relu(h)
-
-            # (bs, 8, 84, 128)
-
-            h = self.bn3(h)#, test=test)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (8, 84, 32)), h.data.shape
+            # (bs, 8, 84, 32)
+            h = self.bn3(h)
             h = self.conv3(h)
-            h = F.leaky_relu(h)
-
-            # (bs, 16, 84, 128)
-
-            h = self.bn4(h)#, test=test)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (16, 84, 16)), h.data.shape
+            # (bs, 16, 84, 16)
+            h = self.bn4(h)
             h = self.conv4(h)
-
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (128, 1, 1)), h.data.shape
             # (bs, 128, 1, 128)
-            h = h[:,:,0]
+            h = self.bn5(h)
+            h = self.deconv1(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (16, 128, 16)), h.data.shape
+            # (bs, 16, 1, 128)
+            h = self.bn6(h)
+            h = self.deconv2(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (8, 128, 32)), h.data.shape
+            # (bs, 8, 1, 128)
+            h = self.bn7(h)
+            h = self.deconv3(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (4, 128, 64)), h.data.shape
+            # (bs, 4, 1, 128)
+            h = self.bn8(h)
+            h = self.deconv4(h)
+            assert(h.data.shape[1:] == (1, 128, 128)), h.data.shape
+            # (bs, 1, 1, 128)
+
+            h = h[:,0,:,:]
 
             # (bs, 128, 128)
             self.cnt_call += 1            
@@ -159,7 +177,8 @@ class BasicCNN(object):
         '''
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
-        self.model = BasicCNN_(input_cnl=input_cnl)
+        # self.model = BasicCNN_(input_cnl=input_cnl)
+        self.model = MarioCNN_(input_cnl=input_cnl)
         if gpu is not None:
             cuda.get_device(gpu).use()
             self.model.to_gpu(gpu)
@@ -182,11 +201,12 @@ class BasicCNN(object):
         del data
 
         width = 128
+        stride = 32
         length = spect.shape[2]
 
-        spect = [spect[:,:,i*width:(i+1)*width] for i in range(length//width)]
+        spect = [spect[:,:,i*stride:i*stride+width] for i in range(length//stride)]
         self.spect = spect # xp.array(spect)
-        score = [score[:,i*width:(i+1)*width] for i in range(length//width)]
+        score = [score[:,i*stride:i*stride+width] for i in range(length//stride)]
         self.score = score # xp.array(score)
         print("Loaded!")
         print(' number of data (== len(self.spect) == len(self.score)):', len(self.spect))
@@ -214,7 +234,7 @@ class BasicCNN(object):
         print(trainn,len(dataset)-trainn)
         train,test = chainer.datasets.split_dataset_random(dataset, trainn)
 
-        train_iter = iterators.SerialIterator(train, batch_size=10, shuffle=True)
+        train_iter = iterators.SerialIterator(train, batch_size=100, shuffle=True)
         test_iter = iterators.SerialIterator(test, batch_size=10, repeat=False,
                                              shuffle=False)
 

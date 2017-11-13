@@ -46,7 +46,7 @@ def score_to_image(score, imgfile):
     ピアノロール画像を生成します
 
     score: np.narray [pitch, seqlen] 各要素は 0 以上 1 以下にすること推奨
-    imgfile: 出力ファイル名　(pdfからまず対応予定)
+    imgfile: 出力ファイル名 (plt.savefigが対応しているファイル名)
     '''
     import matplotlib.pyplot as plt
     width = 2048
