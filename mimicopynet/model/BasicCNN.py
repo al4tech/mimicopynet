@@ -204,11 +204,12 @@ class BasicCNN(object):
         stride = 32
         length = spect.shape[2]
 
-        spect = [spect[:,:,i*stride:i*stride+width] for i in range(length//stride)]
+        spect = [spect[:,:,i*stride:i*stride+width] for i in range((length-width)//stride)]
         self.spect = spect # xp.array(spect)
-        score = [score[:,i*stride:i*stride+width] for i in range(length//stride)]
+        score = [score[:,i*stride:i*stride+width] for i in range((length-width)//stride)]
         self.score = score # xp.array(score)
         print("Loaded!")
+        print(' length of original data (in .npz):', length)
         print(' number of data (== len(self.spect) == len(self.score)):', len(self.spect))
         print(' shape of each spect data:', self.spect[0].shape, self.spect[0].dtype)
         print(' shape of each score data:', self.score[0].shape, self.score[0].dtype)
