@@ -83,9 +83,10 @@ class MarioCNN_(chainer.Chain):
     '''
     試しに作ってみたChain
     '''
-    def __init__(self, input_cnl=1):
+    def __init__(self, input_cnl=1, skip=False):
         '''
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
+        skip: スキップ結合の有無(bool)
         '''
         #TODO: input_cnl mode などはconfigクラスとして一まとめにした方が良いかも
         super(MarioCNN_, self).__init__(
@@ -106,6 +107,7 @@ class MarioCNN_(chainer.Chain):
             bn7 = L.BatchNormalization(8),
             bn8 = L.BatchNormalization(4)
         )
+        self.skip = skip
         self.cnt_call = 0
 
     def __call__(self, x, test=False):
@@ -121,45 +123,61 @@ class MarioCNN_(chainer.Chain):
             # (bs, cnl, 84, 128)
             h = x
 
+            if self.skip:
+                bs = h.shape[0]
+                zero_bs_4_24_64 = Variable(np.zeros([bs, 4, 24, 64]).astype(np.float32))
+                zero_bs_4_20_64 = Variable(np.zeros([bs, 4, 20, 64]).astype(np.float32))
+                zero_bs_8_24_32 = Variable(np.zeros([bs, 8, 24, 32]).astype(np.float32))
+                zero_bs_8_20_32 = Variable(np.zeros([bs, 8, 20, 32]).astype(np.float32))
+                zero_bs_16_24_16 = Variable(np.zeros([bs, 16, 24, 16]).astype(np.float32))
+                zero_bs_16_20_16 = Variable(np.zeros([bs, 16, 20, 16]).astype(np.float32))
+
+
             h = self.bn1(h)
             h = self.conv1(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (4, 84, 64)), h.data.shape
-            # (bs, 4, 84, 64)
+            if self.skip: s1 = F.concat((zero_bs_4_24_64, h, zero_bs_4_20_64), axis=2)
+
             h = self.bn2(h)
             h = self.conv2(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (8, 84, 32)), h.data.shape
-            # (bs, 8, 84, 32)
+            if self.skip: s2 = F.concat((zero_bs_8_24_32, h, zero_bs_8_20_32), axis=2)
+
             h = self.bn3(h)
             h = self.conv3(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (16, 84, 16)), h.data.shape
-            # (bs, 16, 84, 16)
+            if self.skip: s3 = F.concat((zero_bs_16_24_16, h, zero_bs_16_20_16), axis=2)
+
             h = self.bn4(h)
             h = self.conv4(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (128, 1, 1)), h.data.shape
-            # (bs, 128, 1, 128)
+
             h = self.bn5(h)
             h = self.deconv1(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (16, 128, 16)), h.data.shape
-            # (bs, 16, 1, 128)
+            if self.skip: h += s3
+
             h = self.bn6(h)
             h = self.deconv2(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (8, 128, 32)), h.data.shape
-            # (bs, 8, 1, 128)
+            if self.skip: h += s2
+
             h = self.bn7(h)
             h = self.deconv3(h)
             h = F.relu(h)
             assert(h.data.shape[1:] == (4, 128, 64)), h.data.shape
-            # (bs, 4, 1, 128)
+            if self.skip: h += s1
+
             h = self.bn8(h)
             h = self.deconv4(h)
             assert(h.data.shape[1:] == (1, 128, 128)), h.data.shape
-            # (bs, 1, 1, 128)
+            # (bs, 1, 128, 128)
 
             h = h[:,0,:,:]
 
@@ -177,8 +195,8 @@ class BasicCNN(object):
         '''
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
-        self.model = BasicCNN_(input_cnl=input_cnl)
-        # self.model = MarioCNN_(input_cnl=input_cnl)
+        # self.model = BasicCNN_(input_cnl=input_cnl)
+        self.model = MarioCNN_(input_cnl=input_cnl, skip=True)
         if gpu is not None:
             cuda.get_device(gpu).use()
             self.model.to_gpu(gpu)
@@ -230,7 +248,7 @@ class BasicCNN(object):
         学習をするメソッド
         '''
         dataset = chainer.datasets.TupleDataset(self.spect, self.score)
-        p = 0.999
+        p = 0.9
         trainn = int(p*len(dataset))
         print(trainn,len(dataset)-trainn)
         train,test = chainer.datasets.split_dataset_random(dataset, trainn)
@@ -254,7 +272,7 @@ class BasicCNN(object):
         trainer.extend(extensions.snapshot_object(self.model,
                                             'model_{.updater.iteration}.npz',
                                             serializers.save_npz),
-                                            trigger=(50000, 'iteration'))
+                                            trigger=(100000, 'iteration'))
         trainer.run()
     def load_model(self, file):
         serializers.load_npz(file, self.model)
@@ -264,32 +282,41 @@ class BasicCNN(object):
         !! 返り値を pre-sigmoid に変更しました(以前は pre-sigmoid を step-function したもの(0 or 1)を返していた)
         TODO: gpu対応？
 
-        input: np.narray [chl, pitch, seqlen]
-        ret:  np.narray [pitch, seqlen]
+        input: np.narray [chl, pitch_in, seqlen]
+        ret:  np.narray [pitch_out, seqlen]
         '''
+        pitch_out = 128
+
+        ret = np.zeros([pitch_out, input_data.shape[2]]).astype(np.float)
+        ret_denom = np.zeros([pitch_out, input_data.shape[2]]).astype(np.int)
+
         width = 128
+        stride = 8
         length = input_data.shape[2]
-        input_data = [input_data[:,:,i*width:(i+1)*width]
-                      for i in range(length//width+1)]
-        input_data = [np.expand_dims(input_data_, axis=0)
-                      for input_data_ in input_data] # each element: (1, cnl, 84, 128)
+
+        data_list, pos_list = [], []
+        for offset in range(0, width, stride):
+            data_list += [np.expand_dims(input_data[:,:,offset+i*width:offset+(i+1)*width], axis=0)
+                          for i in range((length-offset)//width)] # each element: (1, cnl, 84, 128)
+            pos_list += [offset+i*width for i in range((length-offset)//width)]
 
         bs = 1
         score = []
-        for i in range(0, len(input_data), bs):
-            minibatch = np.concatenate(input_data[i:i+bs], axis=0)
+        for i in range(0, len(data_list), bs):
+            minibatch = np.concatenate(data_list[i:i+bs], axis=0)
             # score_ = (self.model(minibatch, test=True).data>0.)*1
             # # self.model は pre-sigmoid な値を出力するので、閾値は 0 で OK
-            score_ = self.model(minibatch, test=True).data
-            score += list(score_)
-        '''
-        for input_data_ in input_data: # ミニバッチサイズ1で動かしてる
-            score_ = (self.model(input_data_, test=True)[0].data>0.)*1
-            # self.model は pre-sigmoid な値を出力するので、閾値は 0 で OK
-            score.append(score_)
-        '''
+            
+            # score_ = self.model(minibatch, test=True).data # (bs, pitch_out, width)
+            # score += list(score_)
 
-        output = np.concatenate(score, axis=1)
+            score = self.model(minibatch, test=True).data # (bs, pitch_out, width)
+            for j in range(bs):
+                offset = pos_list[i+j]
+                ret[:,offset:offset+width] += score[j,:,:]
+                ret_denom[:,offset:offset+width] += 1
+        # output = np.concatenate(score, axis=1)
+        output = ret / np.maximum(ret_denom, 1)
         return output
     def transcript(self, wavfile, midfile, imgfile=None, mode='abs'):
         '''

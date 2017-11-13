@@ -23,20 +23,20 @@ if args.transcript is None:
 else:
     print('[transcript mode]')
 
-print('loading the model...', end='')
+print('loading the model...', end='', flush=True)
 gpu = int(args.gpu) if args.gpu is not None else None
 model = mcn.model.BasicCNN(input_cnl=2, gpu=gpu)
 print('Done.')
 
 if args.transcript is None: # 学習モード
-    print('loading "thedata_raw.npz"...', end='')
+    print('loading "thedata_raw.npz"...', end='', flush=True)
     model.load_cqt_inout("thedata_raw.npz")
     print('Done.')
     print('Start learning...')
     model.learn(iter_num=10000000)
     print('Learning Done.')
 else: # 推論（耳コピ）モード
-    model.load_model("result171110/model_1000000.npz")
-    print("transcripting from", args.transcript[0], "to", args.transcript[1], "...", end='')
+    model.load_model("result171113/model_200000.npz")
+    print("transcripting from", args.transcript[0], "to", args.transcript[1], "...", end='', flush=True)
     model.transcript(args.transcript[0], args.transcript[1], mode='raw', imgfile='pianoroll.pdf')
     print("Done.")
