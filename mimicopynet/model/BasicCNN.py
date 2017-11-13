@@ -177,8 +177,8 @@ class BasicCNN(object):
         '''
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
-        # self.model = BasicCNN_(input_cnl=input_cnl)
-        self.model = MarioCNN_(input_cnl=input_cnl)
+        self.model = BasicCNN_(input_cnl=input_cnl)
+        # self.model = MarioCNN_(input_cnl=input_cnl)
         if gpu is not None:
             cuda.get_device(gpu).use()
             self.model.to_gpu(gpu)
@@ -243,7 +243,7 @@ class BasicCNN(object):
 
         trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
-                                            trigger=(1, 'iteration'))
+                                            trigger=(500, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(500, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy',
                                                'main/loss',
