@@ -15,7 +15,7 @@ import chainer.functions as F
 import chainer.links as L
 from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
-from ..data import make_cqt_input, score_to_midi, score_to_image
+from ..data import make_cqt_input, score_to_midi, score_to_image, digitize_score
 
 class BasicCNN_(chainer.Chain):
     '''
@@ -219,7 +219,7 @@ class BasicCNN(object):
         del data
 
         width = 128
-        stride = 32
+        stride = 1
         length = spect.shape[2]
 
         spect = [spect[:,:,i*stride:i*stride+width] for i in range((length-width)//stride)]
@@ -329,9 +329,10 @@ class BasicCNN(object):
         '''
         input_data = make_cqt_input(wavfile, mode=mode)
         pre_sigmoid_score = self(input_data)
-        digital_score = (pre_sigmoid_score > 0.) * 1 # 0と1
+        digital_score = digitize_score(pre_sigmoid_score, algorithm='mrf') # 0と1
         sigmoided_score = 1. / (1. + np.exp(-pre_sigmoid_score)) # 0以上1以下
 
         score_to_midi(digital_score, midfile)
         if imgfile is not None:
             score_to_image(sigmoided_score, imgfile)
+            # score_to_image(digital_score, imgfile)

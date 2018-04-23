@@ -10,6 +10,43 @@ import os
 import glob
 import pretty_midi
 
+def digitize_score(score, algorithm='threshold'):
+    '''
+    pre-sigmoidで書かれた score から、0/1で書かれたscoreに変換します。
+
+    score: np.ndarray [pitch, seqlen] 各要素はpre-sigmoidの実数値
+    algorithm:変換アルゴリズムを指定する文字列
+
+    returns: np.ndarray [pitch, seqlen] 各要素は 0/1
+    '''
+    if algorithm=='threshold':
+        return (score > 0.) * 1
+    elif algorithm=='mrf':
+        seqlen = score.shape[1]
+        minus_log_joint_prob = -np.log(np.array([[199.0, 1.0],[1.0, 99.0]])) # パラメータは要調整
+        # [i,j]要素は、E(x_t==i and x_{t+1}==j)
+        ret = np.zeros(score.shape).astype(np.int)
+
+        for n in range(score.shape[0]):
+            dp = np.zeros([2, seqlen])
+            dp_memo = np.zeros([2, seqlen]) # for backtrack
+            for t in range(seqlen):
+                dp[0,t] = (dp[0,t-1] if t>0 else 0) + minus_log_joint_prob[0,0] + score[n,t]
+                dp[1,t] = (dp[0,t-1] if t>0 else 0) + minus_log_joint_prob[0,1]
+                tmp0 = (dp[1,t-1] if t>0 else 0) + minus_log_joint_prob[1,0] + score[n,t]
+                tmp1 = (dp[1,t-1] if t>0 else 0) + minus_log_joint_prob[1,1]
+                if dp[0,t] > tmp0:
+                    dp[0,t] = tmp0; dp_memo[0,t] = 1
+                if dp[1,t] > tmp1:
+                    dp[1,t] = tmp1; dp_memo[1,t] = 1
+            ret[n,seqlen-1] = np.argmin([dp[0,seqlen-1], dp[1,seqlen-1]])
+            for t in range(score.shape[1]-1)[::-1]:
+                ret[n,t] = dp_memo[ret[n,t+1],t+1]
+        return ret
+    else:
+        raise NotImplementedError
+
+
 def score_to_midi(score, midfile):
     '''
     音がなっているかのscoreデータから
