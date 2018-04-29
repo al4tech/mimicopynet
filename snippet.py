@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 import os
+import glob
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--gpu')
@@ -12,14 +13,27 @@ args = parser.parse_args()
 
 if args.transcript is None:
     if args.mnpath is not None:
-        if os.path.exists('thedata_raw.npz'):
-            print('"thedata_raw.npz" exists. skipping generating it.')
+        if os.path.exists('thedata_train_raw.npz') and os.path.exists('thedata_test_raw.npz'):
+            print('"thedata_train_raw.npz" and "thedata_test_raw.npz" exists. skipping generating it.')
         else:
-            print('"thedata_raw.npz" does not exist. Generating...')
-            mcn.data.musicnet_to_wsdata(args.mnpath + "/musicnet.npz", args.mnpath + "/musicnet_metadata.csv", "wsdata", "Solo Piano")
-            mcn.data.make_cqt_inout("wsdata","thedata_raw.npz", mode='raw')
+            print('"thedata_train_raw.npz" or "thedata_test_raw.npz" does not exist. Generating...')
+            if os.path.exists('wsdata'):
+                print('    "wsdata" exists. skipping generating it.')
+            else:
+                print('    generating "wsdata"...', end='', flush=True)
+                mcn.data.musicnet_to_wsdata(args.mnpath + "/musicnet.npz", args.mnpath + "/musicnet_metadata.csv", "wsdata", "Solo Piano")
+                print('Done.')
+            # 訓練曲とテスト曲を分けずに.npzに保存
+            # mcn.data.make_cqt_inout("wsdata","thedata_raw.npz", mode='raw')
+            # 訓練曲とテスト曲を分ける．
+
+            wsd_list = glob.glob("wsdata/*.wsd")
+            mcn.data.make_cqt_inout(wsd_list[::2],"thedata_train_raw.npz", mode='raw')
+            mcn.data.make_cqt_inout(wsd_list[1::2],"thedata_test_raw.npz", mode='raw')
+            print('    Done.')
+
     else:
-        print('the argument --mnpath is undefined. skipping generating "thedata_raw.npz".')
+        print('the argument --mnpath is undefined. skipping generating "thedata_(train|test)_raw.npz".')
 else:
     print('[transcript mode]')
 
@@ -29,8 +43,8 @@ model = mcn.model.BasicCNN(input_cnl=2, gpu=gpu)
 print('Done.')
 
 if args.transcript is None: # 学習モード
-    print('loading "thedata_raw.npz"...', end='', flush=True)
-    model.load_cqt_inout("thedata_raw.npz")
+    print('loading "thedata_train_raw.npz"...', end='', flush=True)
+    model.load_cqt_inout("thedata_train_raw.npz", "thedata_test_raw.npz")
     print('Done.')
     print('Start learning...')
     model.learn(iter_num=10000000)

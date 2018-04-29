@@ -185,6 +185,38 @@ class MarioCNN_(chainer.Chain):
             self.cnt_call += 1            
         return h
 
+class LinearRegression_(chainer.Chain):
+    '''
+    一番シンプルなNN
+    '''
+    def __init__(self, input_cnl=1, skip=False):
+        '''
+        input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
+        skip: スキップ結合の有無(bool)
+        '''
+        #TODO: input_cnl mode などはconfigクラスとして一まとめにした方が良いかも
+        super(LinearRegression_, self).__init__(
+            lin = L.Linear(None, 128*128)
+        )
+        self.cnt_call = 0
+
+    def __call__(self, x, test=False):
+        '''
+        x: Variable (bs, 1, pitchs, width)
+
+        ret: Variable (bs, pitchs, width)
+            sigmoidをかけない値を出力する．
+        '''
+        assert(isinstance(test, bool))
+        with chainer.using_config('train', not test):
+            # (bs, cnl, 84, 128)
+            h = self.lin(x)
+            h = F.reshape(h, (-1, 128, 128))
+            # (bs, 128, 128)
+            self.cnt_call += 1            
+        return h
+
+
 class BasicCNN(object):
     '''
     スペクトル×時間の２次元画像から，それぞれの時間における耳コピを行うモデル
@@ -196,7 +228,8 @@ class BasicCNN(object):
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
         # self.model = BasicCNN_(input_cnl=input_cnl)
-        self.model = MarioCNN_(input_cnl=input_cnl, skip=True,)
+        self.model = MarioCNN_(input_cnl=input_cnl, skip=True)
+        # self.model = LinearRegression_(input_cnl=input_cnl, skip=True)
         if gpu is not None:
             cuda.get_device(gpu).use()
             self.model.to_gpu(gpu)
@@ -208,29 +241,40 @@ class BasicCNN(object):
 
         self.optimizer = optimizers.Adam()
         self.optimizer.setup(self.classifier)
-    def load_cqt_inout(self, file):
-        '''
-        spect np.narray [chl, pitch, seqlen]
-        score np.narray [pitch, seqlen]
-        '''
-        data = np.load(file)
-        score = self.xp.array(data["score"], dtype=self.xp.int32)
-        spect = self.xp.array(data["spect"], dtype=self.xp.float32)
-        del data
 
-        width = 128
-        stride = 1
-        length = spect.shape[2]
+        self.spect_train, self.score_train = None, None
+        self.spect_test, self.score_test = None, None
+    def load_cqt_inout(self, npz_name_train=None, npz_name_test=None):
+        '''
+        npzファイル内の
+            spect: np.narray [chl, pitch, seqlen]
+            score: np.narray [pitch, seqlen]
+        '''
+        for npz_name, mode in zip([npz_name_train, npz_name_test], ['train', 'test']):
+            if npz_name is None: continue
+            data = np.load(npz_name)
+            sc = self.xp.array(data["score"], dtype=self.xp.int32)
+            sp = self.xp.array(data["spect"], dtype=self.xp.float32)
+            del data
 
-        spect = [spect[:,:,i*stride:i*stride+width] for i in range((length-width)//stride)]
-        self.spect = spect # xp.array(spect)
-        score = [score[:,i*stride:i*stride+width] for i in range((length-width)//stride)]
-        self.score = score # xp.array(score)
-        print("Loaded!")
-        print(' length of original data (in .npz):', length)
-        print(' number of data (== len(self.spect) == len(self.score)):', len(self.spect))
-        print(' shape of each spect data:', self.spect[0].shape, self.spect[0].dtype)
-        print(' shape of each score data:', self.score[0].shape, self.score[0].dtype)
+            width = 128
+            stride = 1
+            length = sp.shape[2]
+
+            spect = [sp[:,:,i*stride:i*stride+width] for i in range((length-width)//stride)]
+            score = [sc[:,i*stride:i*stride+width] for i in range((length-width)//stride)]
+            print(mode, 'data Loaded!')
+            print(' length of original data (in .npz):', length)
+            print(' number of data (== len(spect) == len(score)):', len(spect))
+            print(' shape of each spect data:', spect[0].shape, spect[0].dtype)
+            print(' shape of each score data:', score[0].shape, score[0].dtype)
+            if mode == 'train':
+                self.spect_train = spect; self.score_train = score
+            else:
+                self.spect_test = spect; self.score_test = score
+
+
+
     def eval_call(self, x, t):
         '''
         テスト用にClassifierを呼ぶ
@@ -246,15 +290,25 @@ class BasicCNN(object):
     def learn(self, iter_num=300000):
         '''
         学習をするメソッド
-        '''
-        dataset = chainer.datasets.TupleDataset(self.spect, self.score)
-        p = 0.9
-        trainn = int(p*len(dataset))
-        print(trainn,len(dataset)-trainn)
-        train,test = chainer.datasets.split_dataset_random(dataset, trainn)
+        これを呼び出す前に，self.load_cqt_inout で学習用のデータをセットしてください．
+        data_trainのみがセットされている(data_testがセットされていない)場合は，
+        data_trainを9:1に分けて
 
-        train_iter = iterators.SerialIterator(train, batch_size=10, shuffle=True)
-        test_iter = iterators.SerialIterator(test, batch_size=10, repeat=False,
+        '''
+        dataset_train, dataset_test = None, None
+        if self.spect_train is not None:
+            dataset_train = chainer.datasets.TupleDataset(self.spect_train, self.score_train)
+        if self.spect_test is not None:
+            dataset_test = chainer.datasets.TupleDataset(self.spect_test, self.score_test)
+        else:
+            print('data_train only is specified. split it to train and test with p=0.9.')
+            p = 0.9
+            num_train = int(p*len(dataset_train))
+            print(num_train,len(dataset_train)-num_train)
+            dataset_train, dataset_test = chainer.datasets.split_dataset_random(dataset_train, num_train)
+
+        train_iter = iterators.SerialIterator(dataset_train, batch_size=10, shuffle=True)
+        test_iter = iterators.SerialIterator(dataset_test, batch_size=10, repeat=False,
                                              shuffle=False)
 
         updater = training.StandardUpdater(train_iter, self.optimizer)

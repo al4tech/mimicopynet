@@ -11,11 +11,11 @@ import glob
 import librosa
 from .wavescoredata import load_wsdata
 
-def make_cqt_inout(data_dir, file, mode='abs'):
+def make_cqt_inout(data_dir_or_data_list, file, mode='abs'):
     '''
     wsdataからcqtで変換したwaveとscoreをnpzに格納します
 
-    data_dir: wsdataが保存されたディレクトリ
+    data_dir_or_data_list: wsdataが保存されたディレクトリ名(str) or wsdataファイル名のリスト(list of str)
     file: 出力ファイル
     mode: CQTからどんな値を抽出するか
         'abs' 絶対値(chl=1)
@@ -27,8 +27,12 @@ def make_cqt_inout(data_dir, file, mode='abs'):
     '''
     assert mode=='abs' or mode=='raw'
 
+    if isinstance(data_dir_or_data_list, str):
+        path_list = glob.glob("%s/*.wsd"%data_dir)
+    else:
+        path_list = data_dir_or_data_list
     spect,score = [],[]
-    for path in glob.glob("%s/*.wsd"%data_dir):
+    for path in path_list:
         print('processing: wsdata =',path)
         data = load_wsdata(path)
         if mode == 'abs':
