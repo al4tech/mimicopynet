@@ -9,22 +9,26 @@ Created on Sun Dec 25 18:20:17 2016
 import numpy as np
 import pretty_midi
 
-def make_random_song(file,lmb_start=50,lmb_stop=1,seed=0,tempo=120,res=960,
-                     len_t=1000):
+def make_random_song(file,lmb_start=50,lmb_stop=1,seed=None,tempo=120,res=960,
+                     len_t=1000, inst=0):
     '''
     ポアソン過程でランダムな曲を作って、midiファイルに出力します。
     file <str> :出力midiファイル名
     lmb_start <float or list/array_of_float(len==128)> : note off から次の note on までの平均秒数
     lmb_stop <float or list/array_of_float(len==128)> : note on から note off までの平均秒数
-    seed <int> : np.random.seedに渡す乱数の種
+    seed <int or None> : np.random.seedに渡す乱数の種．Noneなら初期化しない．
     tempo <int> : テンポ
     res <int> : レゾリューション
     len_t <float> : 生成される曲の秒数（の上限）
-    '''
-    np.random.seed(seed)
-    pm = pretty_midi.PrettyMIDI(resolution=res, initial_tempo=tempo) #pretty_midiオブジェクトを作ります
-    instrument = pretty_midi.Instrument(0) #instrumentはトラックに相当します。
+    inst <int> : 音色番号
 
+    TODO: 複数の音色が混じるケース．同時に発音するケース(和音)，ドラム．
+    '''
+    if seed is not None: np.random.seed(seed)
+    pm = pretty_midi.PrettyMIDI(resolution=res, initial_tempo=tempo) #pretty_midiオブジェクトを作ります
+
+    instrument = pretty_midi.Instrument(inst) #instrumentはトラックに相当します。
+    
     if (isinstance(lmb_start,int) or isinstance(lmb_start,float)):
         lmb_start = [lmb_start for i in range(128)]
     if (isinstance(lmb_stop,int) or isinstance(lmb_stop,float)):
@@ -42,7 +46,7 @@ def make_random_song(file,lmb_start=50,lmb_stop=1,seed=0,tempo=120,res=960,
             t = stop
             if t > len_t:
                 break
-            note = pretty_midi.Note(velocity=np.random.randint(50,127), pitch=note_number, start=start, end=stop) #noteはNoteOnEventとNoteOffEventに相当します。
+            note = pretty_midi.Note(velocity=np.random.randint(64,127), pitch=note_number, start=start, end=stop) #noteはNoteOnEventとNoteOffEventに相当します。
             instrument.notes.append(note)
 
 
