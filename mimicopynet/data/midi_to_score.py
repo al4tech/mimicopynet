@@ -9,11 +9,20 @@ Created on Sun Dec 25 18:19:26 2016
 import numpy as np
 import pretty_midi
 
+def midi_to_score(midi_file, wav_fre=44100, train_sample = 512.0):
+    '''
+    midiファイルをスコア形式(array)に変換して返します
+    wav_fre:Waveファイルの周波数(Hz)
+    train_sample:スコア形式の時間軸方向の1が，Waveファイルの何サンプル分に相当するか．
+    '''
+    midi_data = pretty_midi.PrettyMIDI(midi_file)
+    return midi_data.get_piano_roll(wav_fre/train_sample)
+
 def midi_to_output(midi_file,out_file,wav_fre = 44100,train_sample = 512.0 ):
     '''
-    midiファイルを出力形式にします
+    midiファイルをスコア形式(array)に変換し，それをdigitizeした上で out_file (.npy) に保存します
     wav_fre:Waveファイルの周波数(Hz)
-    train_sample:何サンプルで教師データを用意するか
+    train_sample:何サンプルで教師データを用意するか（スコア形式の時間軸方向の1が，Waveファイルの何サンプル分に相当するか．）
     '''
     
     midi_data = pretty_midi.PrettyMIDI(midi_file)

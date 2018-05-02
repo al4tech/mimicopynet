@@ -53,7 +53,7 @@ def make_cqt_inout(data_dir_or_data_list, file, mode='abs'):
     print("shape",spect.shape, score.shape)
     np.savez(file, spect=spect, score=score)
 
-def make_cqt_input(file , mode='abs'):
+def make_cqt_input(file , mode='abs', scale_mode=None):
     '''
     waveファイルからcqtで変換します．
 
@@ -61,22 +61,35 @@ def make_cqt_input(file , mode='abs'):
     mode: CQTからどんな値を抽出するか
         'abs' 絶対値(chl=1)
         'raw' 実部と虚部をそのままだす(chl=2)
+    scale_mode: cqtの時のスケールの設定
+        None   librosa.core.cqtのデフォルト設定 (C1 ~= 32.70 Hz (#24) から 84鍵)
+        'midi' midiノートナンバーの #0 -- #127
 
     ret: np.narray [chl, pitch, seqlen]
     '''
     assert mode=='abs' or mode=='raw'
 
-    data = sp.io.wavfile.read(file)[1]
+    sr, data = sp.io.wavfile.read(file)
     data = data.astype(np.float64)
     data = data.mean(axis=1)
     data /= np.abs(data).max()
 
+    if scale_mode is None:
+        fmin, n_bins = None, 84
+    elif scale_mode == 'midi':
+        fmin, n_bins = 440 * 2**(-69/12), 128
+
+    n_bins_limit = 120
+    if n_bins <= n_bins_limit:
+        cqt_array = np.expand_dims(librosa.core.cqt(data,sr=sr,fmin=fmin,n_bins=n_bins), axis=0)
+    else: # hop_length==512 だと一度に10オクターブ分までしかできないらしいので．
+        lower = librosa.core.cqt(data,sr=sr,fmin=fmin,n_bins=n_bins_limit)
+        upper = librosa.core.cqt(data,sr=sr,fmin=fmin*2**(n_bins_limit/12),n_bins=n_bins-n_bins_limit)
+        cqt_array = np.expand_dims(np.r_[lower, upper], axis=0)
+
     if mode == 'abs':
-        input_data = np.abs(librosa.core.cqt(data)).astype(np.float32)
-        input_data = np.expand_dims(input_data, axis=0)
+        return np.abs(cqt_array).astype(np.float32)
     elif mode == 'raw':
-        input_data = librosa.core.cqt(data)
-        input_data = np.expand_dims(input_data, axis=0)
-        input_data = np.concatenate([input_data.real, input_data.imag],
-                                    axis=0).astype(np.float32)
-    return input_data
+        return np.concatenate([cqt_array.real, cqt_array.imag], axis=0).astype(np.float32)
+    else:
+        raise ValueError
