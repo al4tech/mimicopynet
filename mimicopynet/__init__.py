@@ -8,3 +8,4 @@ Created on Thu Dec 22 16:15:47 2016
 
 from . import data
 from . import model
+from . import ipython_utils

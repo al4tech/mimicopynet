@@ -17,6 +17,8 @@ def midi_to_score(midi_file, wav_fre=44100, train_sample = 512.0):
     '''
     midi_data = pretty_midi.PrettyMIDI(midi_file)
     return midi_data.get_piano_roll(wav_fre/train_sample)
+    # get_piano_roll の docstring には 第一引数は int と書かれているが，実装を見ると float で問題なさそう．
+    # get_piano_roll の返り値の.shape[1] は int(第一引数 * 最後のmidiイベントの時刻) となるようだ．
 
 def midi_to_output(midi_file,out_file,wav_fre = 44100,train_sample = 512.0 ):
     '''
