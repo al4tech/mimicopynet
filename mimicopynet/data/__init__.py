@@ -13,4 +13,4 @@ from .postprocess import score_to_midi, score_to_image, digitize_score
 from .make_random_song import make_random_song
 from .midi_to_wav import midi_to_wav
 from .midi_to_score import midi_to_score
-from .random_sample_generator import random_sample_generator
+from .random_dataset_generator import dataset_generator, random_dataset_generator

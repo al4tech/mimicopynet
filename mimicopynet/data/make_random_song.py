@@ -9,7 +9,7 @@ Created on Sun Dec 25 18:20:17 2016
 import numpy as np
 import pretty_midi
 
-def make_random_song(file,lmb_start=50,lmb_stop=1,seed=None,tempo=120,res=960,
+def make_random_song(file,lmb_start=0.6,lmb_stop=0.6,seed=None,tempo=120,res=960,
                      len_t=1000, inst=0):
     '''
     ポアソン過程でランダムな曲を作って、midiファイルに出力します。
@@ -28,12 +28,12 @@ def make_random_song(file,lmb_start=50,lmb_stop=1,seed=None,tempo=120,res=960,
     pm = pretty_midi.PrettyMIDI(resolution=res, initial_tempo=tempo) #pretty_midiオブジェクトを作ります
 
     instrument = pretty_midi.Instrument(inst) #instrumentはトラックに相当します。
-    
+
+    '''
     if (isinstance(lmb_start,int) or isinstance(lmb_start,float)):
         lmb_start = [lmb_start for i in range(128)]
     if (isinstance(lmb_stop,int) or isinstance(lmb_stop,float)):
         lmb_stop = [lmb_stop for i in range(128)]
-
 
     low_pitch = pretty_midi.note_name_to_number('A0')
     high_pitch = pretty_midi.note_name_to_number('A8')
@@ -48,6 +48,24 @@ def make_random_song(file,lmb_start=50,lmb_stop=1,seed=None,tempo=120,res=960,
                 break
             note = pretty_midi.Note(velocity=np.random.randint(64,127), pitch=note_number, start=start, end=stop) #noteはNoteOnEventとNoteOffEventに相当します。
             instrument.notes.append(note)
+    '''
+    # TODO: lmb_startとlmb_stopは数値であることをassertしたい
+    t = 0.
+    while t <= len_t:
+        start = 0.01+np.random.exponential(lmb_start-0.01)+t
+        stop = 0.01+np.random.exponential(lmb_stop-0.01)+start
+        t = stop
+        if t > len_t: break
+        # 和音を決定する
+        min_pitch, max_pitch = pretty_midi.note_name_to_number('C3'), pretty_midi.note_name_to_number('C6')
+        # 88鍵ピアノに合わせるなら A0--C8 であるが，最初は範囲を狭めることにした
+        chord = np.random.choice(np.arange(min_pitch, max_pitch+1), np.random.randint(1,4), replace=False)
+        for note_number in chord:
+            note = pretty_midi.Note(velocity=np.random.randint(64,127), pitch=note_number, start=start, end=stop) #noteはNoteOnEventとNoteOffEventに相当します。
+            instrument.notes.append(note)
+
+
+
 
 
     pm.instruments.append(instrument)

@@ -17,6 +17,8 @@ from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
 from ..data import make_cqt_input, score_to_midi, score_to_image, digitize_score
 
+from ..data import dataset_generator
+
 class BasicCNN_(chainer.Chain):
     '''
     下のBasicCNNで使うChain
@@ -242,13 +244,18 @@ class BasicCNN(object):
         self.optimizer = optimizers.Adam()
         self.optimizer.setup(self.classifier)
 
-        self.spect_train, self.score_train = None, None
-        self.spect_test, self.score_test = None, None
-    def load_cqt_inout(self, npz_name_train=None, npz_name_test=None):
+        self.dataset_train, self.dataset_test = None, None
+        # self.spect_train, self.score_train = None, None
+        # self.spect_test, self.score_test = None, None
+    def load_cqt_inout(self, npz_name_train=None, npz_name_test=None, split_train_ratio=1.0):
         '''
         npzファイル内の
             spect: np.narray [chl, pitch, seqlen]
             score: np.narray [pitch, seqlen]
+
+        split_train_ratio:  もし npz_name_train のみが指定された場合に，
+                            この変数がデフォの 1.0 より小さな値 p であった場合は，
+                            npz_name_train の中身を p:(1-p) にランダムに分割して train と testにします，
         '''
         for npz_name, mode in zip([npz_name_train, npz_name_test], ['train', 'test']):
             if npz_name is None: continue
@@ -269,9 +276,17 @@ class BasicCNN(object):
             print(' shape of each spect data:', spect[0].shape, spect[0].dtype)
             print(' shape of each score data:', score[0].shape, score[0].dtype)
             if mode == 'train':
-                self.spect_train = spect; self.score_train = score
+                # self.spect_train = spect; self.score_train = score
+                self.dataset_train = chainer.datasets.TupleDataset(spect, score)
             else:
-                self.spect_test = spect; self.score_test = score
+                # self.spect_test = spect; self.score_test = score
+                self.dataset_test = chainer.datasets.TupleDataset(spect, score)
+
+            if self.dataset_train is not None and self.dataset_test is None and 0.0 < split_train_ratio < 1.0:
+                print('split ' + npz_name_train + ' to training and test datawith p=' + str(split_train_ratio))
+                num_train = int(split_train_ratio * len(self.dataset_train))
+                print(num_train, len(self.dataset_train) - num_train)
+                self.dataset_train, self.dataset_test = chainer.datasets.split_dataset_random(self.dataset_train, num_train)
 
 
 
@@ -290,22 +305,13 @@ class BasicCNN(object):
     def learn(self, iter_num=300000):
         '''
         学習をするメソッド
-        これを呼び出す前に，self.load_cqt_inout で学習用のデータをセットしてください．
-        data_trainのみがセットされている(data_testがセットされていない)場合は，
-        data_trainを9:1に分けて
-
+        これを呼び出す前に，以下のいずれかの方法で学習用のデータをセットしてください．
+        1.  self.load_dataset() を用いて
+            TupleDataset または dataset_generator を self.dataset_(train|test) に直接セットする．
+        2.  self.load_cqt_inout() を用いて，
+            npzファイル名から self.dataset_(train|test) をセットする．
+        
         '''
-        dataset_train, dataset_test = None, None
-        if self.spect_train is not None:
-            dataset_train = chainer.datasets.TupleDataset(self.spect_train, self.score_train)
-        if self.spect_test is not None:
-            dataset_test = chainer.datasets.TupleDataset(self.spect_test, self.score_test)
-        else:
-            print('data_train only is specified. split it to train and test with p=0.9.')
-            p = 0.9
-            num_train = int(p*len(dataset_train))
-            print(num_train,len(dataset_train)-num_train)
-            dataset_train, dataset_test = chainer.datasets.split_dataset_random(dataset_train, num_train)
 
         train_iter = iterators.SerialIterator(dataset_train, batch_size=10, shuffle=True)
         test_iter = iterators.SerialIterator(dataset_test, batch_size=10, repeat=False,
