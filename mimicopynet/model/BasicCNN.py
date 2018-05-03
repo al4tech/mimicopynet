@@ -17,7 +17,7 @@ from chainer.training import extensions
 from ..chainer_util import f_measure_accuracy
 from ..data import make_cqt_input, score_to_midi, score_to_image, digitize_score
 
-from ..data import dataset_generator
+from ..data import RandomDataset
 
 class BasicCNN_(chainer.Chain):
     '''
@@ -187,6 +187,100 @@ class MarioCNN_(chainer.Chain):
             self.cnt_call += 1            
         return h
 
+class LuigiCNN_(chainer.Chain):
+    '''
+    試しに作ってみたChain その2 (MarioCNN_はpitchs==84想定だったのをpitchs==128想定のに変えたかった)
+    '''
+    def __init__(self, input_cnl=1, skip=False):
+        '''
+        input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
+        skip: スキップ結合の有無(bool)
+        '''
+        super(LuigiCNN_, self).__init__(
+            conv1 = L.Convolution2D(input_cnl, 4, ksize=(49,3), pad=(24,1), stride=(1,2)),
+            conv2 = L.Convolution2D(4, 8, ksize=(49,3), pad=(24,1), stride=(1,2)),
+            conv3 = L.Convolution2D(8, 16, ksize=(3,3), pad=(1,1), stride=(1,2)),
+            conv4 = L.Convolution2D(16, 128, ksize=(128,16), pad=(0,0)),
+            deconv1 = L.Deconvolution2D(128, 16, ksize=(128,16), pad=(0,0)),
+            deconv2 = L.Deconvolution2D(16, 8, ksize=(3,3), pad=(1,1), stride=(1,2), outsize=(128,32)),
+            deconv3 = L.Deconvolution2D(8, 4, ksize=(49,3), pad=(24,1), stride=(1,2), outsize=(128,64)),
+            deconv4 = L.Deconvolution2D(4, 1, ksize=(49,3), pad=(24,1), stride=(1,2), outsize=(128,128)),
+            bn1 = L.BatchNormalization(input_cnl),
+            bn2 = L.BatchNormalization(4),
+            bn3 = L.BatchNormalization(8),
+            bn4 = L.BatchNormalization(16),
+            bn5 = L.BatchNormalization(128),
+            bn6 = L.BatchNormalization(16),
+            bn7 = L.BatchNormalization(8),
+            bn8 = L.BatchNormalization(4)
+        )
+        self.skip = skip
+        self.cnt_call = 0
+
+    def __call__(self, x, test=False):
+        '''
+        x: Variable (bs, 1, pitchs==128, width)
+
+        ret: Variable (bs, pitchs==128, width)
+            sigmoidをかけない値を出力する．
+        '''
+        assert(isinstance(test, bool))
+        with chainer.using_config('train', not test):
+
+            # (bs, cnl, 128, 128)
+            h = x
+            h = self.bn1(h)
+            h = self.conv1(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (4, 128, 64)), h.data.shape
+            if self.skip: s1 = h
+
+            h = self.bn2(h)
+            h = self.conv2(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (8, 128, 32)), h.data.shape
+            if self.skip: s2 = h
+
+            h = self.bn3(h)
+            h = self.conv3(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (16, 128, 16)), h.data.shape
+            if self.skip: s3 = h
+
+            h = self.bn4(h)
+            h = self.conv4(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (128, 1, 1)), h.data.shape
+
+            h = self.bn5(h)
+            h = self.deconv1(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (16, 128, 16)), h.data.shape
+            if self.skip: h += s3
+
+            h = self.bn6(h)
+            h = self.deconv2(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (8, 128, 32)), h.data.shape
+            if self.skip: h += s2
+
+            h = self.bn7(h)
+            h = self.deconv3(h)
+            h = F.relu(h)
+            assert(h.data.shape[1:] == (4, 128, 64)), h.data.shape
+            if self.skip: h += s1
+
+            h = self.bn8(h)
+            h = self.deconv4(h)
+            assert(h.data.shape[1:] == (1, 128, 128)), h.data.shape
+            # (bs, 1, 128, 128)
+
+            h = h[:,0,:,:]
+
+            # (bs, 128, 128)
+            self.cnt_call += 1            
+        return h    
+
 class LinearRegression_(chainer.Chain):
     '''
     一番シンプルなNN
@@ -230,7 +324,8 @@ class BasicCNN(object):
         input_cnl: 画像のチャンネル（CQTの絶対値を使うなら1,実部と虚部を使うなら2)
         '''
         # self.model = BasicCNN_(input_cnl=input_cnl)
-        self.model = MarioCNN_(input_cnl=input_cnl, skip=True)
+        # self.model = MarioCNN_(input_cnl=input_cnl, skip=True)
+        self.model = LuigiCNN_(input_cnl=input_cnl, skip=True)
         # self.model = LinearRegression_(input_cnl=input_cnl, skip=True)
         if gpu is not None:
             cuda.get_device(gpu).use()
@@ -291,7 +386,9 @@ class BasicCNN(object):
                 else:
                     print('[load_cqt_inout] dataset_train only is specified. (If you want to split it to training and test data,'
                             'make the optional argument split_train_ratio (default: 1.0) lesser than 1.0.')
-
+    def load_dataset(self, dataset_train=None, dataset_test=None):
+        if dataset_train is not None: self.dataset_train = dataset_train
+        if dataset_test is not None: self.dataset_test = dataset_test
 
 
     def eval_call(self, x, t):
@@ -311,20 +408,20 @@ class BasicCNN(object):
         学習をするメソッド
         これを呼び出す前に，以下のいずれかの方法で学習用のデータをセットしてください．
         1.  self.load_dataset() を用いて
-            TupleDataset または dataset_generator を self.dataset_(train|test) に直接セットする．
+            TupleDataset または chainer.dataset.DatasetMixin を self.dataset_(train|test) に直接セットする．
         2.  self.load_cqt_inout() を用いて，
-            npzファイル名から self.dataset_(train|test) をセットする．
-        
+            npzファイル名から TupleDataset を self.dataset_(train|test) にセットする．
         '''
+        if self.dataset_train is not None:
+            train_iter = iterators.SerialIterator(self.dataset_train, batch_size=10, shuffle=True)
+        if self.dataset_test is not None:
+            test_iter = iterators.SerialIterator(self.dataset_test, batch_size=10, repeat=False, shuffle=False)
 
-        train_iter = iterators.SerialIterator(dataset_train, batch_size=10, shuffle=True)
-        test_iter = iterators.SerialIterator(dataset_test, batch_size=10, repeat=False,
-                                             shuffle=False)
-
-        updater = training.StandardUpdater(train_iter, self.optimizer)
-        trainer = training.Trainer(updater, (iter_num, 'iteration'), out='result')
-
-        trainer.extend(extensions.Evaluator(test_iter, self.classifier,
+        if self.dataset_train is not None:
+            updater = training.StandardUpdater(train_iter, self.optimizer)
+            trainer = training.Trainer(updater, (iter_num, 'iteration'), out='result')
+        if self.dataset_test is not None:
+            trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
                                             trigger=(10000, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(500, 'iteration')))
@@ -337,6 +434,18 @@ class BasicCNN(object):
                                             'model_{.updater.iteration}.npz',
                                             serializers.save_npz),
                                             trigger=(100000, 'iteration'))
+
+        if isinstance(self.dataset_train, RandomDataset): # RandomDataset の中身を1epochごとに再生成するためのextension
+            @training.make_extension(trigger=(1,'epoch'))
+            def dataset_train_refresh_ext(trainer): self.dataset_train.refresh()
+            trainer.extend(dataset_train_refresh_ext)
+            # trainer.extend(training.make_extension(trigger=(1, 'epoch'))(self.dataset_train.refresh))
+        if isinstance(self.dataset_test, RandomDataset): # RandomDataset の中身を1epochごとに再生成するためのextension
+            @training.make_extension(trigger=(1,'epoch'))
+            def dataset_test_refresh_ext(trainer): self.dataset_test.refresh()
+            trainer.extend(dataset_test_refresh_ext)
+            # trainer.extend(training.make_extension(trigger=(1, 'epoch'))(self.dataset_test.refresh))
+
         trainer.run()
     def load_model(self, file):
         serializers.load_npz(file, self.model)
