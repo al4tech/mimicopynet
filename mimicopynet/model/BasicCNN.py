@@ -270,11 +270,11 @@ class BasicCNN(object):
 
             spect = [sp[:,:,i*stride:i*stride+width] for i in range((length-width)//stride)]
             score = [sc[:,i*stride:i*stride+width] for i in range((length-width)//stride)]
-            print(mode, 'data Loaded!')
-            print(' length of original data (in .npz):', length)
-            print(' number of data (== len(spect) == len(score)):', len(spect))
-            print(' shape of each spect data:', spect[0].shape, spect[0].dtype)
-            print(' shape of each score data:', score[0].shape, score[0].dtype)
+            print('[load_cqt_inout]', mode, 'data loaded!')
+            print('    length of original data (in .npz):', length)
+            print('    number of data (== len(spect) == len(score)):', len(spect))
+            print('    shape of each spect data:', spect[0].shape, spect[0].dtype)
+            print('    shape of each score data:', score[0].shape, score[0].dtype)
             if mode == 'train':
                 # self.spect_train = spect; self.score_train = score
                 self.dataset_train = chainer.datasets.TupleDataset(spect, score)
@@ -282,11 +282,15 @@ class BasicCNN(object):
                 # self.spect_test = spect; self.score_test = score
                 self.dataset_test = chainer.datasets.TupleDataset(spect, score)
 
-            if self.dataset_train is not None and self.dataset_test is None and 0.0 < split_train_ratio < 1.0:
-                print('split ' + npz_name_train + ' to training and test datawith p=' + str(split_train_ratio))
-                num_train = int(split_train_ratio * len(self.dataset_train))
-                print(num_train, len(self.dataset_train) - num_train)
-                self.dataset_train, self.dataset_test = chainer.datasets.split_dataset_random(self.dataset_train, num_train)
+            if self.dataset_train is not None and self.dataset_test is None:
+                if 0.0 < split_train_ratio < 1.0:
+                    print('[load_cqt_inout] split ' + npz_name_train + ' to training and test datawith p=' + str(split_train_ratio))
+                    num_train = int(split_train_ratio * len(self.dataset_train))
+                    print(num_train, len(self.dataset_train) - num_train)
+                    self.dataset_train, self.dataset_test = chainer.datasets.split_dataset_random(self.dataset_train, num_train)
+                else:
+                    print('[load_cqt_inout] dataset_train only is specified. (If you want to split it to training and test data,'
+                            'make the optional argument split_train_ratio (default: 1.0) lesser than 1.0.')
 
 
 
