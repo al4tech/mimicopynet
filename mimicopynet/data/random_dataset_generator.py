@@ -30,11 +30,11 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         if cqt.shape[-1] < length:
             cqt = np.concatenate([cqt, np.zeros([cqt.shape[0], cqt.shape[1], length - cqt.shape[-1]], dtype=np.float)], axis=2)
         elif cqt.shape[-1] > length:
-            cqt = cqt[:,:,length]
+            cqt = cqt[:,:,:length]
         if score.shape[-1] < length:
             score = np.c_[score, np.zeros([score.shape[0], length - score.shape[-1]], dtype=np.int)]
         elif score.shape[-1] > length:
-            score = score[:,length]
+            score = score[:,:length]
         assert(cqt.shape[-1]==score.shape[-1]==length)
         # cqt:   (ch, scale, length) float
         # score: (scale, length) int

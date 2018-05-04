@@ -433,7 +433,7 @@ class BasicCNN(object):
         trainer.extend(extensions.snapshot_object(self.model,
                                             'model_{.updater.iteration}.npz',
                                             serializers.save_npz),
-                                            trigger=(100000, 'iteration'))
+                                            trigger=(5000, 'iteration'))
 
         if isinstance(self.dataset_train, RandomDataset): # RandomDataset の中身を1epochごとに再生成するためのextension
             @training.make_extension(trigger=(1,'epoch'))
