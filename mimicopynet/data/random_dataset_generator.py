@@ -5,7 +5,7 @@ from .midi_to_wav import midi_to_wav
 from .preprocess import make_cqt_input
 from .midi_to_score import midi_to_score
 
-from chainer import datasets
+from chainer import datasets, cuda
 import chainer
 
 
@@ -13,8 +13,11 @@ import chainer
 #     pass
 
 class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixin を継承する必要はあるか？
-    def __init__(self, num_samples):
+    def __init__(self, num_samples, gpu=None):
         self.num_samples = num_samples
+        self.gpu = gpu
+        if gpu is not None:
+            cuda.get_device(gpu).use()
         self.refresh()
     def generateTupleDataset(self, num_samples, inst=0):
         length = num_samples + 128
@@ -31,6 +34,9 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         # score: (scale, length) int
         cqt = cqt.astype(np.float32)
         score = score.astype(np.int32)
+        if self.gpu is not None:
+            cqt = cuda.to_gpu(cqt)
+            score = cuda.to_gpu(score)
         spect_list = [cqt[:,:,i:i+128] for i in range(cqt.shape[-1]-128)]
         score_list = [score[:,i:i+128] for i in range(score.shape[-1]-128)]
         return datasets.TupleDataset(spect_list, score_list)

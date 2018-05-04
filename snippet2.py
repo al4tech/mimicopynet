@@ -17,7 +17,7 @@ model = mcn.model.BasicCNN(input_cnl=2, gpu=gpu)
 print('Done.')
 
 if args.transcript is None: # 学習モード
-    rd = mcn.data.RandomDataset(300)
+    rd = mcn.data.RandomDataset(300, gpu=gpu)
     model.load_dataset(rd, None)
     print('Start learning...')
     model.learn(iter_num=10000000)
