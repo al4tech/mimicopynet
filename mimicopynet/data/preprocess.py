@@ -11,7 +11,7 @@ import glob
 import librosa
 from .wavescoredata import load_wsdata
 
-def make_cqt_inout(data_dir_or_data_list, file, mode='abs'):
+def make_cqt_inout(data_dir_or_data_list, file, mode='abs', scale_mode=None):
     '''
     wsdataからcqtで変換したwaveとscoreをnpzに格納します
 
@@ -20,12 +20,20 @@ def make_cqt_inout(data_dir_or_data_list, file, mode='abs'):
     mode: CQTからどんな値を抽出するか
         'abs' 絶対値(chl=1)
         'raw' 実部と虚部をそのままだす(chl=2)
+    scale_mode: cqtの時のスケールの設定
+        None   librosa.core.cqtのデフォルト設定 (C1 ~= 32.70 Hz (#24) から 84鍵)
+        'midi' midiノートナンバーの #0 -- #127
 
     npz内データ
     spect np.narray [chl, pitch, seqlen]
     score np.narray [pitch, seqlen]
     '''
     assert mode=='abs' or mode=='raw'
+
+    if scale_mode is None:
+        fmin, n_bins = None, 84
+    elif scale_mode == 'midi':
+        fmin, n_bins = 440 * 2**(-69/12), 128
 
     if isinstance(data_dir_or_data_list, str):
         path_list = glob.glob("%s/*.wsd"%data_dir_or_data_list)
@@ -35,13 +43,23 @@ def make_cqt_inout(data_dir_or_data_list, file, mode='abs'):
     for path in path_list:
         print('processing: wsdata =',path)
         data = load_wsdata(path)
+
+        n_bins_limit = 120
+        sr = 44100 # musicNetのサンプリングレートは44100Hzです
+        if n_bins <= n_bins_limit:
+            cqt_array = np.expand_dims(librosa.core.cqt(data.wave,sr=sr,fmin=fmin,n_bins=n_bins), axis=0)
+        else: # hop_length==512 だと一度に10オクターブ分までしかできないらしいので．
+            lower = librosa.core.cqt(data.wave,sr=sr,fmin=fmin,n_bins=n_bins_limit)
+            upper = librosa.core.cqt(data.wave,sr=sr,fmin=fmin*2**(n_bins_limit/12),n_bins=n_bins-n_bins_limit)
+            cqt_array = np.expand_dims(np.r_[lower, upper], axis=0)
+
         if mode == 'abs':
-            spect_ = np.abs(librosa.core.cqt(data.wave))
-            spect_ = np.expand_dims(spect_, axis=0)
+            spect_ = np.abs(cqt_array).astype(np.float32)
         elif mode == 'raw':
-            spect_ = librosa.core.cqt(data.wave)
-            spect_ = np.expand_dims(spect_, axis=0)
-            spect_ = np.concatenate([spect_.real, spect_.imag], axis=0)
+            spect_ = np.concatenate([cqt_array.real, cqt_array.imag], axis=0).astype(np.float32)
+        else:
+            raise ValueError
+
         score_ = data.score
         length = min([spect_.shape[2],score_.shape[1]])
         spect_, score_ = spect_[:,:,:length], score_[:,:length]
