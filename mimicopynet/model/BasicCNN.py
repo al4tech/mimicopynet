@@ -413,9 +413,9 @@ class BasicCNN(object):
             npzファイル名から TupleDataset を self.dataset_(train|test) にセットする．
         '''
         if self.dataset_train is not None:
-            train_iter = iterators.SerialIterator(self.dataset_train, batch_size=10, shuffle=True)
+            train_iter = iterators.SerialIterator(self.dataset_train, batch_size=100, shuffle=True)
         if self.dataset_test is not None:
-            test_iter = iterators.SerialIterator(self.dataset_test, batch_size=10, repeat=False, shuffle=False)
+            test_iter = iterators.SerialIterator(self.dataset_test, batch_size=100, repeat=False, shuffle=False)
 
         if self.dataset_train is not None:
             updater = training.StandardUpdater(train_iter, self.optimizer)
@@ -423,7 +423,7 @@ class BasicCNN(object):
         if self.dataset_test is not None:
             trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
-                                            trigger=(10000, 'iteration'))
+                                            trigger=(1000, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(10, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy',
                                                'main/loss',
