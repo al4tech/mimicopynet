@@ -19,6 +19,7 @@ print('Done.')
 if args.transcript is None: # 学習モード
     rd = mcn.data.RandomDataset(10000, gpu=gpu)
     model.load_dataset(rd, None)
+    model.load_cqt_inout(None, '1733_raw.npz')
     print('Start learning...')
     model.learn(iter_num=10000000)
     print('Learning Done.')

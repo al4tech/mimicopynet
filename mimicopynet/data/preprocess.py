@@ -28,7 +28,7 @@ def make_cqt_inout(data_dir_or_data_list, file, mode='abs'):
     assert mode=='abs' or mode=='raw'
 
     if isinstance(data_dir_or_data_list, str):
-        path_list = glob.glob("%s/*.wsd"%data_dir)
+        path_list = glob.glob("%s/*.wsd"%data_dir_or_data_list)
     else:
         path_list = data_dir_or_data_list
     spect,score = [],[]

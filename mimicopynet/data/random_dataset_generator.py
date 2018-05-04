@@ -20,15 +20,20 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
             cuda.get_device(gpu).use()
         self.refresh()
     def generateTupleDataset(self, num_samples, inst=0):
-        length = num_samples + 128
+        stride = 4
+        length = num_samples * stride + 128 # 512/44100秒 の個数
         make_random_song('_.mid', len_t=length*512/44100, inst=inst)
         midi_to_wav('_.mid','_.wav')
         cqt = make_cqt_input('_.wav', mode='raw', scale_mode='midi')
         score = midi_to_score('_.mid')
         if cqt.shape[-1] < length:
             cqt = np.concatenate([cqt, np.zeros([cqt.shape[0], cqt.shape[1], length - cqt.shape[-1]], dtype=np.float)], axis=2)
+        elif cqt.shape[-1] > length:
+            cqt = cqt[:,:,length]
         if score.shape[-1] < length:
             score = np.c_[score, np.zeros([score.shape[0], length - score.shape[-1]], dtype=np.int)]
+        elif score.shape[-1] > length:
+            score = score[:,length]
         assert(cqt.shape[-1]==score.shape[-1]==length)
         # cqt:   (ch, scale, length) float
         # score: (scale, length) int
@@ -37,8 +42,8 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         if self.gpu is not None:
             cqt = cuda.to_gpu(cqt)
             score = cuda.to_gpu(score)
-        spect_list = [cqt[:,:,i:i+128] for i in range(cqt.shape[-1]-128)]
-        score_list = [score[:,i:i+128] for i in range(score.shape[-1]-128)]
+        spect_list = [cqt[:,:,i*stride:i*stride+128] for i in range(num_samples)]
+        score_list = [score[:,i*stride:i*stride+128] for i in range(num_samples)]
         return datasets.TupleDataset(spect_list, score_list)
     def refresh(self, num_samples=None):
         if num_samples is None: num_samples = self.num_samples

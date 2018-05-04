@@ -423,7 +423,7 @@ class BasicCNN(object):
         if self.dataset_test is not None:
             trainer.extend(extensions.Evaluator(test_iter, self.classifier,
                                             eval_func=self.eval_call),
-                                            trigger=(1000, 'iteration'))
+                                            trigger=(100, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(10, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy',
                                                'main/loss',
