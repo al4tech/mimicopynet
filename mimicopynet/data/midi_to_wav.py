@@ -26,10 +26,13 @@ class FluidSynth():
         	self.fluidsynth_path = 'fluidsynth'
 
     def midi_to_audio(self, midi_file, audio_file):
-        subprocess.call([self.fluidsynth_path, '-ni', self.sound_font, midi_file, '-F', audio_file, '-r', str(self.sample_rate)])
+    	dev_null = open(os.devnull, 'w')
+        subprocess.call([self.fluidsynth_path, '-ni', self.sound_font, midi_file, '-F', audio_file, '-r', str(self.sample_rate)],
+        	stdout=dev_null)
 
     def play_midi(self, midi_file):
-        subprocess.call([self.fluidsynth_path, '-i', self.sound_font, midi_file, '-r', str(self.sample_rate)])
+        subprocess.call([self.fluidsynth_path, '-i', self.sound_font, midi_file, '-r', str(self.sample_rate)],
+        	stdout=dev_null)
 
 
 
