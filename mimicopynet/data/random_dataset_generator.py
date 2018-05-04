@@ -13,13 +13,14 @@ import chainer
 #     pass
 
 class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixin を継承する必要はあるか？
-    def __init__(self, num_samples, gpu=None):
+    def __init__(self, num_samples, inst=0, gpu=None):
         self.num_samples = num_samples
+        self.inst = inst
         self.gpu = gpu
         if gpu is not None:
             cuda.get_device(gpu).use()
         self.refresh()
-    def generateTupleDataset(self, num_samples, inst=0):
+    def generateTupleDataset(self, num_samples, inst):
         stride = 4
         length = num_samples * stride + 128 # 512/44100秒 の個数
         make_random_song('_.mid', len_t=length*512/44100, inst=inst)
@@ -45,9 +46,10 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         spect_list = [cqt[:,:,i*stride:i*stride+128] for i in range(num_samples)]
         score_list = [score[:,i*stride:i*stride+128] for i in range(num_samples)]
         return datasets.TupleDataset(spect_list, score_list)
-    def refresh(self, num_samples=None):
+    def refresh(self, num_samples=None, inst=None):
         if num_samples is None: num_samples = self.num_samples
-        self.dataset = self.generateTupleDataset(num_samples)
+        if inst is None: inst = self.inst
+        self.dataset = self.generateTupleDataset(num_samples, inst)
     def __len__(self):
         return len(self.dataset)
     def get_example(self, i):
