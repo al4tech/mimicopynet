@@ -21,7 +21,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
             cuda.get_device(gpu).use()
         self.refresh()
     def generateTupleDataset(self, num_samples, inst):
-        stride = 4
+        stride = 32
         length = num_samples * stride + 128 # 512/44100秒 の個数
         make_random_song('_.mid', len_t=length*512/44100, inst=inst)
         midi_to_wav('_.mid','_.wav')
