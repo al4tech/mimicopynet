@@ -35,7 +35,6 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         score_list = [score[:,i:i+128] for i in range(score.shape[-1]-128)]
         return datasets.TupleDataset(spect_list, score_list)
     def refresh(self, num_samples=None):
-        print('[!refresh!]')
         if num_samples is None: num_samples = self.num_samples
         self.dataset = self.generateTupleDataset(num_samples)
     def __len__(self):
