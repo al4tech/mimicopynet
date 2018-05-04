@@ -25,8 +25,8 @@ def make_cqt_inout(data_dir_or_data_list, file, mode='abs', scale_mode=None):
         'midi' midiノートナンバーの #0 -- #127
 
     npz内データ
-    spect np.narray [chl, pitch, seqlen]
-    score np.narray [pitch, seqlen]
+    spect np.narray [chl, pitch, seqlen] (float)
+    score np.narray [pitch, seqlen] (0/1)
     '''
     assert mode=='abs' or mode=='raw'
 

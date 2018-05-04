@@ -333,8 +333,8 @@ class BasicCNN(object):
             self.xp = cuda.cupy
         else:
             self.xp = np
-        self.classifier = L.Classifier(self.model, F.sigmoid_cross_entropy,
-                                       f_measure_accuracy)
+        self.classifier = L.Classifier(self.model, lossfun=F.sigmoid_cross_entropy,
+                                       accfun=f_measure_accuracy)
 
         self.optimizer = optimizers.Adam()
         self.optimizer.setup(self.classifier)
@@ -345,8 +345,8 @@ class BasicCNN(object):
     def load_cqt_inout(self, npz_name_train=None, npz_name_test=None, split_train_ratio=1.0):
         '''
         npzファイル内の
-            spect: np.narray [chl, pitch, seqlen]
-            score: np.narray [pitch, seqlen]
+            spect: np.narray [chl, pitch, seqlen] (float)
+            score: np.narray [pitch, seqlen] (0/1)
 
         split_train_ratio:  もし npz_name_train のみが指定された場合に，
                             この変数がデフォの 1.0 より小さな値 p であった場合は，
@@ -415,7 +415,7 @@ class BasicCNN(object):
         if self.dataset_train is not None:
             train_iter = iterators.SerialIterator(self.dataset_train, batch_size=100, shuffle=True)
         if self.dataset_test is not None:
-            test_iter = iterators.SerialIterator(self.dataset_test, batch_size=100, repeat=False, shuffle=False)
+            test_iter = iterators.SerialIterator(self.dataset_test, batch_size=100, repeat=False, shuffle=True)
 
         if self.dataset_train is not None:
             updater = training.StandardUpdater(train_iter, self.optimizer)
