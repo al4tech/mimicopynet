@@ -33,7 +33,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         # cqt:   (ch, scale, length) float
         # score: (scale, length) int
         cqt = cqt.astype(np.float32)
-        score = score.astype(np.int32)
+        score = (score > 0).astype(np.int32) # 0-128を 0-1に変換している
         if self.gpu is not None:
             cqt = cuda.to_gpu(cqt)
             score = cuda.to_gpu(score)
