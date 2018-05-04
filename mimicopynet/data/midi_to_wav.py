@@ -21,18 +21,18 @@ class FluidSynth():
 
         # fluidsynth のパスを環境変数から取得する．（設定されていない場合は 'fluidsynth' とする．）
         if 'FLUIDSYNTH_PATH' in os.environ:
-        	self.fluidsynth_path = os.environ['FLUIDSYNTH_PATH']
+            self.fluidsynth_path = os.environ['FLUIDSYNTH_PATH']
         else:
-        	self.fluidsynth_path = 'fluidsynth'
+            self.fluidsynth_path = 'fluidsynth'
 
     def midi_to_audio(self, midi_file, audio_file):
-    	dev_null = open(os.devnull, 'w')
+        dev_null = open(os.devnull, 'w')
         subprocess.call([self.fluidsynth_path, '-ni', self.sound_font, midi_file, '-F', audio_file, '-r', str(self.sample_rate)],
-        	stdout=dev_null)
+            stdout=dev_null)
 
     def play_midi(self, midi_file):
         subprocess.call([self.fluidsynth_path, '-i', self.sound_font, midi_file, '-r', str(self.sample_rate)],
-        	stdout=dev_null)
+        stdout=dev_null)
 
 
 
