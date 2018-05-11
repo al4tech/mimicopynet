@@ -24,7 +24,7 @@ if args.transcript is None: # 学習モード
     model.learn(iter_num=10000000)
     print('Learning Done.')
 else: # 推論（耳コピ）モード
-    model.load_model("result171115/model_1600000.npz")
+    model.load_model("result180505/model_130000.npz")
     print("transcripting from", args.transcript[0], "to", args.transcript[1], "...", end='', flush=True)
     model.transcript(args.transcript[0], args.transcript[1], mode='raw', imgfile=args.transcript[2])
     print("Done.")

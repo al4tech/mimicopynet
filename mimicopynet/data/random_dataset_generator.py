@@ -17,13 +17,14 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         self.num_samples = num_samples
         self.inst = inst
         self.gpu = gpu
+        self.level = 0
         if gpu is not None:
             cuda.get_device(gpu).use()
         self.refresh()
-    def generateTupleDataset(self, num_samples, inst):
+    def generateTupleDataset(self, num_samples, **kwargs):
         stride = 16
         length = num_samples * stride + 128 # 512/44100秒 の個数
-        make_random_song('_.mid', len_t=length*512/44100, inst=inst)
+        make_random_song('_.mid', len_t=length*512/44100, **kwargs)
         midi_to_wav('_.mid','_.wav')
         cqt = make_cqt_input('_.wav', mode='raw', scale_mode='midi')
         score = midi_to_score('_.mid')
@@ -46,10 +47,11 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         spect_list = [cqt[:,:,i*stride:i*stride+128] for i in range(num_samples)]
         score_list = [score[:,i*stride:i*stride+128] for i in range(num_samples)]
         return datasets.TupleDataset(spect_list, score_list)
-    def refresh(self, num_samples=None, inst=None):
-        if num_samples is None: num_samples = self.num_samples
-        if inst is None: inst = self.inst
-        self.dataset = self.generateTupleDataset(num_samples, inst)
+    def refresh(self):
+        # self.level に応じて，self.inst から inst_set を計算する．
+        # レベルが上がるほど高確率で色々な音色を含むようにする？
+        self.dataset = self.generateTupleDataset(self.num_samples, inst=self.inst, lmb_start=300.0/(100+self.level))
+        self.level += 1
     def __len__(self):
         return len(self.dataset)
     def get_example(self, i):

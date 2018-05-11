@@ -500,7 +500,7 @@ class BasicCNN(object):
             'abs' 絶対値(chl=1)
             'raw' 実部と虚部をそのままだす(chl=2)
         '''
-        input_data = make_cqt_input(wavfile, mode=mode)
+        input_data = make_cqt_input(wavfile, mode=mode, scale_mode='midi')
         pre_sigmoid_score = self(input_data)
         digital_score = digitize_score(pre_sigmoid_score, algorithm='mrf') # 0と1
         sigmoided_score = 1. / (1. + np.exp(-pre_sigmoid_score)) # 0以上1以下
