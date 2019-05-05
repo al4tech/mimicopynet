@@ -41,6 +41,7 @@ musicnetからピアノのソロ曲のみを，wavescoredataというmimicopynet
 ```python
 mcn.data.musicnet_to_wsdata("musicnet.npz", "musicnet_metadata.csv", "wsdata", "Solo Piano") #3つめの引数は，wavescoredataが保存されるディレクトリ
 ```
+wavescoredata には，波形のデータと譜面のデータが，簡素なフォーマットで格納されています．
 
 wavescoredataから，CQT(Constant Q Transform)を行い，訓練データに整形します．
 modeは'abs'と'raw'の２種類があります．
@@ -54,20 +55,20 @@ model = mcn.model.BasicCNN(input_cnl=1)
 ```
 
 訓練データをロードして，学習させます．
-```
+```python
 model.load_cqt_inout("testdata.npz")
 model.learn()
 ```
 
 学習されたモデルは，resultディレクトリに保存されます．
 学習済みモデルをロードして，耳コピを行います．
-```
+```python
 model.load_model("result/model_50000.npz")
 model.transcript("test.wav", "test.mid")
 ```
 
 CQTの実部と虚部を使うコードは以下の通りです．
-```
+```python
 mcn.data.make_cqt_inout("wsdata", "data_rawmode.npz", mode='raw')
 
 model = mcn.model.BasicCNN(input_cnl=2)
