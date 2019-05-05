@@ -41,7 +41,7 @@ musicnetからピアノのソロ曲のみを，wavescoredataというmimicopynet
 ```python
 mcn.data.musicnet_to_wsdata("musicnet.npz", "musicnet_metadata.csv", "wsdata", "Solo Piano") #3つめの引数は，wavescoredataが保存されるディレクトリ
 ```
-wavescoredata には，波形のデータと譜面のデータが，簡素なフォーマットで格納されています．
+wavescoredata には，波形のデータとそれに対応する譜面のデータが，簡素なフォーマットで格納されています．
 
 wavescoredataから，CQT(Constant Q Transform)を行い，訓練データに整形します．
 modeは'abs'と'raw'の２種類があります．
