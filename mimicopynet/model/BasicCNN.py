@@ -391,15 +391,23 @@ class BasicCNN(object):
         if dataset_test is not None: self.dataset_test = dataset_test
 
 
-    def eval_call(self, x, t):
+    def _eval_call(self, x, t):
         '''
-        テスト用にClassifierを呼ぶ
-        self.classifier(x, t)と同様の使い方をする．
+        評価やテスト用にClassifierを呼ぶための関数．
+
+        self.classifier(x, t) を呼び出すと，train モードで実行されてしまうが，
+        その代わりに self.eval_call(x, t) すると，
+        self.classifier が test モードで実行される．
 
         x: (bs, cnl, pitch_in, width)
         t: (bs, pitch_out, width)
         '''
-        self.classifier(x, True, t) #これはlossを返す。TODO: Trueは何？
+        self.classifier(x, True, t) # これはlossを返す。
+        # NOTE: 第二引数の True は何か？
+        # → L.Classifier の __cal__ は，デフォルトでは最後の引数をラベルとして扱い，それ以外の引数は
+        #   内部の predictor にそのまま引き渡す．つまり BasicCNN_ などの forward に
+        #   2つの引数 x, True が引き渡される．つまり，True は，BasicCNN_ などの forward の第二引数である
+        # 「test かどうかを指定するフラグ」として扱われる．
         
         # self.classfier.y: (bs, pitch_out, width)
 
@@ -422,7 +430,7 @@ class BasicCNN(object):
             trainer = training.Trainer(updater, (iter_num, 'iteration'), out='result')
         if self.dataset_test is not None:
             trainer.extend(extensions.Evaluator(test_iter, self.classifier,
-                                            eval_func=self.eval_call),
+                                            eval_func=self._eval_call),
                                             trigger=(500, 'iteration'))
         trainer.extend(extensions.LogReport(trigger=(10, 'iteration')))
         trainer.extend(extensions.PrintReport(['iteration', 'main/accuracy',
