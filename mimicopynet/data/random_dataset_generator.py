@@ -1,7 +1,7 @@
 import numpy as np
 import pickle
 from .make_random_song import make_random_song
-from .midi_to_wav import midi_to_wav
+from .midi_to_wav import FluidSynth #, midi_to_wav
 from .preprocess import make_cqt_input
 from .midi_to_score import midi_to_score
 

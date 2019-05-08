@@ -22,7 +22,7 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
             Noneの時は全部
              (楽器編成を指定する文字列については musicnet_metadata.csv 参照)
     '''
-    data = np.load(open(file,'rb'),encoding='latin1')
+    data = np.load(open(file,'rb'),encoding='latin1', allow_pickle=True)
     os.makedirs(out_dir, exist_ok=True)
     meta = pd.read_csv(meta)
     if ensemble is None:
@@ -44,9 +44,11 @@ def musicnet_to_wsdata(file, meta, out_dir, ensemble=None):
             for nn in nns:
                 out_npy[nn,i] = 1.
         print('    .wave.shape:', in_npy.shape, '.score.shape:', out_npy.shape, 'score_sample.shape:', out_sample.shape)
+        print('    .wave.dtype:', in_npy.dtype, '.score.dtype:', out_npy.dtype, 'score_sample.dtype:', out_sample.dtype)
         wsdata.wave = in_npy
         wsdata.score = out_npy
         wsdata.score_sample = out_sample
+        # TODO: 複数パートの情報を込めるべきか？ ← 込めた方が良い．.wave と .score に一次元加える？
         savefilename = out_dir+'/'+str(id)+'.wsd'
         wsdata.save(savefilename)
         print('    saved:',savefilename)
