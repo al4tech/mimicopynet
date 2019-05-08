@@ -13,7 +13,7 @@ import chainer
 #     pass
 
 class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixin を継承する必要はあるか？
-    def __init__(self, num_samples, sound_font, inst=0, gpu=None, score_mode='hold'):
+    def __init__(self, num_samples, sound_font, inst=0, gpu=None, score_mode='hold', lmb_start_const=300.0):
         """
         Args:
             num_samples (int):
@@ -33,6 +33,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         self.gpu = gpu
         self.score_mode = score_mode
         self.level = 0
+        self.lmb_start_const = lmb_start_const
         if gpu is not None:
             cuda.get_device(gpu).use()
         self.refresh()
@@ -71,7 +72,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
     def refresh(self):
         # self.level に応じて，self.inst から inst_set を計算する．
         # レベルが上がるほど高確率で色々な音色を含むようにする？
-        self.dataset = self.generateTupleDataset(self.num_samples, inst=self.inst, lmb_start=300.0/(100+self.level))
+        self.dataset = self.generateTupleDataset(self.num_samples, inst=self.inst, lmb_start=self.lmb_start_const/(100+self.level))
         self.level += 1
     def __len__(self):
         return len(self.dataset)
