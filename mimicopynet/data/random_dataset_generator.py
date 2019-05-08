@@ -59,6 +59,9 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         # score: (scale, length) int
         cqt = cqt.astype(np.float32)
         score = (score > 0).astype(np.int32) # 連続値から 0 or 1 の二値に変換していることに注意！
+        # おそらく score のほとんどが 0 なんですよねー・・・
+        print('score.size == {}, np.max(score) == {}, score.sum() == {}, score.mean() == {}'.format(
+              score.size, np.max(score), score.sum(), score.mean()))
         if self.gpu is not None:
             cqt = cuda.to_gpu(cqt)
             score = cuda.to_gpu(score)
