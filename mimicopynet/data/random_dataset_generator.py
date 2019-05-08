@@ -13,7 +13,7 @@ import chainer
 #     pass
 
 class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixin を継承する必要はあるか？
-    def __init__(self, num_samples, sound_font, inst=0, gpu=None):
+    def __init__(self, num_samples, sound_font, inst=0, gpu=None, score_mode='hold'):
         """
         Args:
             num_samples (int):
@@ -23,6 +23,9 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
             inst:
 
             gpu:
+
+            score_mode (str):
+                'hold' or 'onset'
         """
         self.num_samples = num_samples
         self.sound_font = sound_font
@@ -39,7 +42,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         fls = FluidSynth(sound_font=self.sound_font)
         fls.midi_to_audio('_.mid','_.wav')
         cqt = make_cqt_input('_.wav', mode='raw', scale_mode='midi')
-        score = midi_to_score('_.mid', sampling_rate=44100/512, mode='hold')
+        score = midi_to_score('_.mid', sampling_rate=44100/512, mode=score_mode)
         score = np.max(score, axis=0) # .max により，全パートをマージする．
 
         if cqt.shape[-1] < length:
