@@ -13,8 +13,19 @@ import chainer
 #     pass
 
 class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixin を継承する必要はあるか？
-    def __init__(self, num_samples, inst=0, gpu=None):
+    def __init__(self, num_samples, sound_font, inst=0, gpu=None):
+        """
+        Args:
+            num_samples (int):
+                データ数．
+            sound_font (str):
+                wave を作るためのサウンドフォントファイル (.sf2) へのパス．
+            inst:
+
+            gpu:
+        """
         self.num_samples = num_samples
+        self.sound_font = sound_font
         self.inst = inst
         self.gpu = gpu
         self.level = 0
@@ -25,9 +36,12 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         stride = 16
         length = num_samples * stride + 128 # 512/44100秒 の個数
         make_random_song('_.mid', len_t=length*512/44100, **kwargs)
-        midi_to_wav('_.mid','_.wav')
+        fls = FluidSynth(sound_font=self.sound_font)
+        fls.midi_to_audio('_.mid','_.wav')
         cqt = make_cqt_input('_.wav', mode='raw', scale_mode='midi')
-        score = midi_to_score('_.mid')
+        score = midi_to_score('_.mid', sampling_rate=44100/512, mode='hold')
+        score = np.max(score, axis=0) # .max により，全パートをマージする．
+
         if cqt.shape[-1] < length:
             cqt = np.concatenate([cqt, np.zeros([cqt.shape[0], cqt.shape[1], length - cqt.shape[-1]], dtype=np.float)], axis=2)
         elif cqt.shape[-1] > length:
@@ -40,7 +54,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         # cqt:   (ch, scale, length) float
         # score: (scale, length) int
         cqt = cqt.astype(np.float32)
-        score = (score > 0).astype(np.int32) # 0-128を 0-1に変換している
+        score = (score > 0).astype(np.int32) # 連続値から 0 or 1 の二値に変換していることに注意！
         if self.gpu is not None:
             cqt = cuda.to_gpu(cqt)
             score = cuda.to_gpu(score)
