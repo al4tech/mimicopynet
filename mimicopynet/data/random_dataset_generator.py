@@ -31,6 +31,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         self.sound_font = sound_font
         self.inst = inst
         self.gpu = gpu
+        self.score_mode = score_mode
         self.level = 0
         if gpu is not None:
             cuda.get_device(gpu).use()
@@ -42,7 +43,7 @@ class RandomDataset(chainer.dataset.DatasetMixin): # chainer.dataset.DatasetMixi
         fls = FluidSynth(sound_font=self.sound_font)
         fls.midi_to_audio('_.mid','_.wav')
         cqt = make_cqt_input('_.wav', mode='raw', scale_mode='midi')
-        score = midi_to_score('_.mid', sampling_rate=44100/512, mode=score_mode)
+        score = midi_to_score('_.mid', sampling_rate=44100/512, mode=self.score_mode)
         score = np.max(score, axis=0) # .max により，全パートをマージする．
 
         if cqt.shape[-1] < length:
