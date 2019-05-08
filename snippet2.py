@@ -17,7 +17,7 @@ model = mcn.model.BasicCNN(input_cnl=2, gpu=gpu)
 print('Done.')
 
 if args.transcript is None: # 学習モード
-    rd = mcn.data.RandomDataset(10000, inst=[0,1], gpu=gpu)
+    rd = mcn.data.RandomDataset(10000, sound_font='mimicopynet/soundfonts/TimGM6mb.sf2', inst=[0,1], gpu=gpu, score_mode='onset')
     model.load_dataset(rd, None)
     model.load_cqt_inout(None, '1733_raw.npz')
     print('Start learning...')
