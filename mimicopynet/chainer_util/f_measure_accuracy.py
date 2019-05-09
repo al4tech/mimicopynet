@@ -15,6 +15,8 @@ import chainer.functions as F
 import chainer.links as L
 from chainer.training import extensions
 
+from chainer import reporter
+
 class FMeasureAccuracy(chainer.function.Function):
 
     ignore_label = -1
@@ -42,6 +44,7 @@ class FMeasureAccuracy(chainer.function.Function):
         fn = ((c==0)*(t==1)).sum()
         rec = tp/(tp+fn)
         pre = tp/(tp+fp)
+        reporter.report({'precision': pre, 'recall': rec}, self) # これで良い？
         return xp.asarray(2*rec*pre/(rec+pre), dtype=y.dtype),
 
 
