@@ -17,3 +17,4 @@ from .wsh5 import WSH5, WSH5Dataset
 from .musicnet_to_wsh5 import musicnet_to_wsh5
 from .midi_to_wsh5 import midi_to_wsh5
 from .random_dataset_generator import RandomDataset # dataset_generator, random_dataset_generator
+from .midi_dataset import MidiSampler, MidiDataset

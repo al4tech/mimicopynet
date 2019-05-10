@@ -14,7 +14,7 @@ from chainer import Link, Chain, ChainList
 import chainer.functions as F
 import chainer.links as L
 from chainer.training import extensions
-from ..chainer_util import f_measure_accuracy
+from ..chainer_utils import f_measure_accuracy
 from ..data import make_cqt_input, score_to_midi, score_to_image, digitize_score
 
 from ..data import RandomDataset

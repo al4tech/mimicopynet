@@ -1,0 +1,1 @@
+from .utils import get_array_in_fixed_size

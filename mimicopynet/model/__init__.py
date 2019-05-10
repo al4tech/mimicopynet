@@ -7,3 +7,4 @@ Created on Thu Dec 22 16:15:47 2016
 """
 
 from .BasicCNN import BasicCNN
+from .nocqt.model import NoCQTModel
