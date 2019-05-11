@@ -65,45 +65,55 @@ class NoCQTModel(object):
 
             TODO: どちらかの形式に絞りたい．
         """
-        bs_train = 10
-        bs_eval = 10
-        gpu = -1
-        result_dir = 'result'
-        num_epoch = 100
-        train_size = 10000
-        eval_size = 1000
-        length_sec = 0.5
-        no_drum = True
-        num_part = 1
+
+        # デフォルトの設定．
+        conf = {
+            'bs_train': 10,
+            'bs_eval': 10,
+            'gpu': -1,
+            'result_dir': 'result',
+            'num_epoch': 100
+        }
+        # train_size = 10000
+        # eval_size = 1000
+        # length_sec = 0.5
+        # no_drum = True
+        # num_part = 1
+
+        # 設定の上書き．
+        for k, v in kwargs.items():
+            conf[k] = v
 
         # データセットの準備．
         if isinstance(midis, MidiDataset):
             dataset_train = midis
         else:
-            dataset_train = MidiDataset(midis, train_size, length_sec=length_sec, no_drum=no_drum, num_part=num_part)
+            raise ValueError
+            # dataset_train = MidiDataset(midis, train_size, length_sec=length_sec, no_drum=no_drum, num_part=num_part)
         if eval_midis is not None:
             if isinstance(eval_midis, MidiDataset):
                 dataset_eval = eval_midis
             else:
-                dataset_eval = MidiDataset(eval_midis, eval_size, length_sec=length_sec, no_drum=no_drum, num_part=num_part)
+                raise ValueError
+                # dataset_eval = MidiDataset(eval_midis, eval_size, length_sec=length_sec, no_drum=no_drum, num_part=num_part)
 
         # Chain の準備
         net = Net()
         mdl = PRFClassifier(net, lossfun=net.lossfun, accfun=net.accfun)
-        opt = optimizers.MomentumSGD(lr=0.02).setup(mdl)
-        itr_train = iterators.SerialIterator(dataset_train, shuffle=False, batch_size=bs_train)
-        upd = training.StandardUpdater(itr_train, opt, device=gpu)
-        trn = training.Trainer(upd, (num_epoch, 'epoch'), out=result_dir)
+        opt = optimizers.MomentumSGD(lr=0.1).setup(mdl)
+        itr_train = iterators.SerialIterator(dataset_train, shuffle=False, batch_size=conf['bs_train'])
+        upd = training.StandardUpdater(itr_train, opt, device=conf['gpu'])
+        trn = training.Trainer(upd, (conf['num_epoch'], 'epoch'), out=conf['result_dir'])
         trn.extend(extensions.LogReport(trigger=(10, 'iteration')))
         trn.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
         trn.extend(extensions.snapshot_object(mdl, filename='model_epoch-{.updater.epoch}'))
         if eval_midis is not None:
-            itr_eval = iterators.SerialIterator(dataset_eval, shuffle=False, repeat=False, batch_size=bs_eval)
-            trn.extend(extensions.Evaluator(itr_eval, mdl, device=gpu))
+            itr_eval = iterators.SerialIterator(dataset_eval, shuffle=False, repeat=False, batch_size=conf['bs_eval'])
+            trn.extend(extensions.Evaluator(itr_eval, mdl, device=conf['gpu']))
         # trn.extend(extensions.PrintReport(['epoch', 'iteration', 'main/loss', 'main/accuracy', 'validation/main/loss', 'validation/main/accuracy', 'elapsed_time']))
         trn.extend(extensions.PrintReport(['epoch', 'iteration', 'main/loss', 'main/precision', 'main/recall', 'main/fvalue', 'validation/main/loss', 'validation/main/precision', 'validation/main/recall', 'validation/main/fvalue', 'elapsed_time']))
         trn.extend(extensions.PlotReport(['main/loss', 'validation/main/loss'], x_key='epoch', file_name='loss.png'))
-        trn.extend(extensions.PlotReport(['main/accuracy', 'validation/main/accuracy'], x_key='epoch', file_name='accuracy.png'))
+        trn.extend(extensions.PlotReport(['main/fvalue', 'validation/main/fvalue'], x_key='epoch', file_name='accuracy.png'))
         trn.extend(extensions.dump_graph('main/loss'))
 
         trn.run()
