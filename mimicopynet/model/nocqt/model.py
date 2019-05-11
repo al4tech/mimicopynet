@@ -7,7 +7,7 @@ from chainer import functions as F
 from chainer import links as L
 
 from ...data import MidiDataset
-from ...chainer_utils import f_measure_accuracy
+from ...chainer_utils import f_measure_accuracy, PRFClassifier, binary_classification_summary
 
 class Net(Chain):
     def __init__(self):
@@ -43,8 +43,13 @@ class Net(Chain):
         Args:
             y (Variable) 上参照
             t (Variable) shape==(*, 2, 128, samples_of_score) dtype==xp.int32
+        Returns:
+            (P, R, F, support)
+                それぞれ type は xp.ndarray
+                P, R, F : shape==(), dtype==xp.float64
+                support : shape==(2,), dtype==xp.int64
         """
-        return f_measure_accuracy(y, t[:,1,:,:].max(axis=-1))
+        return binary_classification_summary(y, t[:,1,:,:].max(axis=-1))
 
 
 class NoCQTModel(object):
@@ -57,12 +62,14 @@ class NoCQTModel(object):
         Args:
             midis (iterable of str, or MidiDataset):
                 midi 形式のファイルへのパスを各要素に持つ iterable.
+
+            TODO: どちらかの形式に絞りたい．
         """
         bs_train = 10
         bs_eval = 10
         gpu = -1
         result_dir = 'result'
-        num_epoch = 1000
+        num_epoch = 100
         train_size = 10000
         eval_size = 1000
         length_sec = 0.5
@@ -82,18 +89,19 @@ class NoCQTModel(object):
 
         # Chain の準備
         net = Net()
-        mdl = L.Classifier(net, lossfun=net.lossfun, accfun=net.accfun)
+        mdl = PRFClassifier(net, lossfun=net.lossfun, accfun=net.accfun)
         opt = optimizers.MomentumSGD(lr=0.02).setup(mdl)
         itr_train = iterators.SerialIterator(dataset_train, shuffle=False, batch_size=bs_train)
         upd = training.StandardUpdater(itr_train, opt, device=gpu)
         trn = training.Trainer(upd, (num_epoch, 'epoch'), out=result_dir)
-        trn.extend(extensions.LogReport())
+        trn.extend(extensions.LogReport(trigger=(10, 'iteration')))
         trn.extend(extensions.snapshot(filename='snapshot_epoch-{.updater.epoch}'))
         trn.extend(extensions.snapshot_object(mdl, filename='model_epoch-{.updater.epoch}'))
         if eval_midis is not None:
             itr_eval = iterators.SerialIterator(dataset_eval, shuffle=False, repeat=False, batch_size=bs_eval)
             trn.extend(extensions.Evaluator(itr_eval, mdl, device=gpu))
-        trn.extend(extensions.PrintReport(['epoch', 'main/loss', 'main/accuracy', 'validation/main/loss', 'validation/main/accuracy', 'elapsed_time']))
+        # trn.extend(extensions.PrintReport(['epoch', 'iteration', 'main/loss', 'main/accuracy', 'validation/main/loss', 'validation/main/accuracy', 'elapsed_time']))
+        trn.extend(extensions.PrintReport(['epoch', 'iteration', 'main/loss', 'main/precision', 'main/recall', 'main/fvalue', 'validation/main/loss', 'validation/main/precision', 'validation/main/recall', 'validation/main/fvalue', 'elapsed_time']))
         trn.extend(extensions.PlotReport(['main/loss', 'validation/main/loss'], x_key='epoch', file_name='loss.png'))
         trn.extend(extensions.PlotReport(['main/accuracy', 'validation/main/accuracy'], x_key='epoch', file_name='accuracy.png'))
         trn.extend(extensions.dump_graph('main/loss'))
