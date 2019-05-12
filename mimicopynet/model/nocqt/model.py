@@ -25,6 +25,7 @@ class Net(Chain):
             c6=L.Convolution1D(16, 16, ksize=7, dilate=1024),
             c7=L.Convolution1D(16, 128, ksize=7, dilate=4096),
         )
+        self.cnt = 0
     def __call__(self, X):
         """
         Args:
@@ -49,7 +50,10 @@ class Net(Chain):
         # h = self.b5(h)
         h = F.relu(self.c6(h))
         h = self.c7(h)
+        if self.cnt == 0:
+            print(h.shape)
         y = F.max(h, axis=-1)
+        self.cnt += 1
         return y
 
     @staticmethod
@@ -127,7 +131,7 @@ class NoCQTModel(object):
         if conf['gpu'] >= 0:
             cuda.get_device(conf['gpu']).use()
             mdl.to_gpu()
-        opt = optimizers.MomentumSGD(lr=0.005).setup(mdl)
+        opt = optimizers.MomentumSGD(lr=0.000).setup(mdl)
         itr_train = iterators.SerialIterator(dataset_train, shuffle=False, batch_size=conf['bs_train'])
         upd = training.StandardUpdater(itr_train, opt, device=conf['gpu'])
         trn = training.Trainer(upd, (conf['num_epoch'], 'epoch'), out=conf['result_dir'])
