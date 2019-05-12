@@ -52,7 +52,7 @@ class Net(Chain):
         h = self.c7(h)
         if self.cnt == 0:
             print(h.shape)
-        y = F.max(h, axis=-1)
+        y = F.mean(h, axis=-1)
         self.cnt += 1
         return y
 
