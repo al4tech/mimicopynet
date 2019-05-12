@@ -100,6 +100,9 @@ class NoCQTModel(object):
         # Chain の準備
         net = Net()
         mdl = PRFClassifier(net, lossfun=net.lossfun, accfun=net.accfun)
+        if conf['gpu'] >= 0:
+            cuda.get_device(conf['gpu']).use()
+            mdl.to_gpu()
         opt = optimizers.MomentumSGD(lr=0.1).setup(mdl)
         itr_train = iterators.SerialIterator(dataset_train, shuffle=False, batch_size=conf['bs_train'])
         upd = training.StandardUpdater(itr_train, opt, device=conf['gpu'])
