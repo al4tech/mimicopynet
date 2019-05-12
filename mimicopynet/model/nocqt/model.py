@@ -131,7 +131,7 @@ class NoCQTModel(object):
         if conf['gpu'] >= 0:
             cuda.get_device(conf['gpu']).use()
             mdl.to_gpu()
-        opt = optimizers.MomentumSGD(lr=0.000).setup(mdl)
+        opt = optimizers.MomentumSGD(lr=0.001).setup(mdl)
         itr_train = iterators.SerialIterator(dataset_train, shuffle=False, batch_size=conf['bs_train'])
         upd = training.StandardUpdater(itr_train, opt, device=conf['gpu'])
         trn = training.Trainer(upd, (conf['num_epoch'], 'epoch'), out=conf['result_dir'])
