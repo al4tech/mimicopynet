@@ -12,9 +12,18 @@ from ...chainer_utils import f_measure_accuracy, PRFClassifier, binary_classific
 class Net(Chain):
     def __init__(self):
         super(Net, self).__init__(
-            l1=L.Linear(None, 512),
-            l2=L.Linear(512, 256),
-            l3=L.Linear(256, 128),
+            c1=L.Convolution1D(1, 16, ksize=7, dilate=1),
+            # b1=L.BatchNormalization(16),
+            c2=L.Convolution1D(16, 16, ksize=7, dilate=4),
+            # b2=L.BatchNormalization(16),
+            c3=L.Convolution1D(16, 16, ksize=7, dilate=16),
+            # b3=L.BatchNormalization(16),
+            c4=L.Convolution1D(16, 16, ksize=7, dilate=64),
+            # b4=L.BatchNormalization(16),
+            c5=L.Convolution1D(16, 16, ksize=7, dilate=256),
+            # b5=L.BatchNormalization(16),
+            c6=L.Convolution1D(16, 16, ksize=7, dilate=1024),
+            c7=L.Convolution1D(16, 128, ksize=7, dilate=4096),
         )
     def __call__(self, X):
         """
@@ -27,9 +36,20 @@ class Net(Chain):
                 「各音がその間に一度でも新規に鳴ったかどうか」の判定結果 (pre_sigmoid value)
                  shape==(*, 128) dtype==xp.float32
         """
-        h = F.relu(self.l1(X))
-        h = F.relu(self.l2(h))
-        y = self.l3(h)
+        h = F.expand_dims(X, axis=1)
+        h = F.relu(self.c1(h))
+        # h = self.b1(h)
+        h = F.relu(self.c2(h))
+        # h = self.b2(h)
+        h = F.relu(self.c3(h))
+        # h = self.b3(h)
+        h = F.relu(self.c4(h))
+        # h = self.b4(h)
+        h = F.relu(self.c5(h))
+        # h = self.b5(h)
+        h = F.relu(self.c6(h))
+        h = self.c7(h)
+        y = F.max(h, axis=-1)
         return y
 
     @staticmethod
