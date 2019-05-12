@@ -1,3 +1,11 @@
+# これは原因不明ながらも import fluidsynth が対話モードでだけ成功するため
+# 対症療法的に付け加えられたコードです
+import sys
+sys.__interactivehook__()
+
+import matplotlib
+matplotlib.use('Agg')
+
 import glob
 import mimicopynet as mcn
 import argparse
@@ -13,13 +21,13 @@ parser.add_argument('--midiworld-path', type=str, default='../midiworld',
 args = parser.parse_args()
 
 train_midis = mcn.data.MidiDataset(
-    midis=glob.glob(args.midiworld_path + '/midiworld/midifile/[Aa]*/*.mid'),
+    midis=glob.glob(args.midiworld_path + '/midifile/[Aa]*/*.mid'),
     size=1000,
     sf2_path='mimicopynet/soundfonts/TimGM6mb.sf2',
     length_sec=1.0, no_drum=True, num_part=1
 )
 eval_midis = mcn.data.MidiDataset(
-    midis=glob.glob(args.midiworld_path + '/midiworld/midifile/[Bb]*/*.mid'),
+    midis=glob.glob(args.midiworld_path + '/midifile/[Bb]*/*.mid'),
     size=1000,
     sf2_path='mimicopynet/soundfonts/TimGM6mb.sf2',
     length_sec=1.0, no_drum=True, num_part=1
