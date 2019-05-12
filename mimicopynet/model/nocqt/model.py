@@ -12,7 +12,9 @@ from ...chainer_utils import f_measure_accuracy, PRFClassifier, binary_classific
 class Net(Chain):
     def __init__(self):
         super(Net, self).__init__(
-            l1=L.Linear(None, 128)
+            l1=L.Linear(None, 512),
+            l2=L.Linear(512, 256),
+            l3=L.Linear(256, 128),
         )
     def __call__(self, X):
         """
@@ -25,7 +27,9 @@ class Net(Chain):
                 「各音がその間に一度でも新規に鳴ったかどうか」の判定結果 (pre_sigmoid value)
                  shape==(*, 128) dtype==xp.float32
         """
-        y = self.l1(X)
+        h = F.relu(self.l1(X))
+        h = F.relu(self.l2(h))
+        y = self.l3(h)
         return y
 
     @staticmethod
