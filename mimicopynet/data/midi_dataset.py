@@ -145,19 +145,12 @@ class MyInstrument(pretty_midi.Instrument):
             if rec_ended:
                 break
 
+            samples = fl.get_samples(end - current_sample).reshape(-1, 2)
+            # NOTE: get_samples の返り値は dtype==np.int16 です．
             if num_channel == 1:
-                # 現在の状態で end - current_sample サンプル発音した場合の波形を受け取っている（同時に，fl の内部時刻がこの幅だけ進む？）
-                samples = fl.get_samples(end - current_sample)[::2]
-                # NOTE: get_samples の返り値は dtype==np.int16 です．
-                # TODO このスライシングこれでいいの((R+L)/2がちゃんと取れている？)
-                synthesized[current_sample-rec_start_sample:end-rec_start_sample, 0] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
-            elif num_channel == 2:
-                samples = fl.get_samples(end - current_sample).reshape(-1, 2)
-                # TODO RとLがちゃんと取れているか？
-                synthesized[current_sample-rec_start_sample:end-rec_start_sample] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
-                # TODO 1 のケースと 2 のケースをまとめる？
-            else:
-                raise ValueError('num_channel == {}'.format(num_channel))
+                samples = np.mean(samples.astype(np.float32), axis=1)
+            synthesized[current_sample-rec_start_sample:end-rec_start_sample] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
+
             # Increment the current sample
             current_time += event[0]
         # Close fluidsynth
