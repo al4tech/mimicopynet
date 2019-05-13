@@ -537,7 +537,7 @@ class MidiDataset(dataset.DatasetMixin):
         """
         wave_samples = int(round(self.length_sec * self.wave_sr))
         score_samples = int(round(self.length_sec * self.score_sr))
-        wave_shape = (wave_samples, self.num_channel)
+        wave_shape = (self.num_channel, wave_samples)
         score_feats_shape = (2, 128, score_samples)
         return wave_shape, score_feats_shape
 
@@ -550,7 +550,7 @@ class MidiDataset(dataset.DatasetMixin):
         Returns:
             以下の tuple
                 wave (np.ndarray):
-                    波形情報．shape==(wave_samples, num_channel) dtype==np.float32
+                    波形情報．shape==(num_channel, wave_samples) dtype==np.float32
                     スケールは ±1 程度（この範囲に収まっていることは保証されない）
                 score_feats (np.ndarray):
                     スコア情報．shape==(2, 128, score_samples) dtype==np.int32
@@ -598,10 +598,8 @@ class MidiDataset(dataset.DatasetMixin):
 
         # wave の正規化
         wave /= 32768
-        # NOTE: 最大絶対値での正規化は「無音＋微小ノイズ」も増幅してしまうので避ける．
-        # maxi = np.max(np.abs(wave))
-        # if maxi > 0:
-        #     wave /= maxi
+        wave = wave.T  # チャンネル次元を手前にするための転置
+        # NOTE: 最大絶対値での正規化は「無音＋微小ノイズ」も増幅してしまうので避けた方が良さそう．
 
         # score のバイナリ化．
         score_feats = score_feats.astype(np.bool).astype(np.int32)

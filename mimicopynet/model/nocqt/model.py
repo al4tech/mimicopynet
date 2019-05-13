@@ -10,7 +10,10 @@ from ...data import MidiDataset
 from ...chainer_utils import f_measure_accuracy, PRFClassifier, binary_classification_summary
 
 class Net(Chain):
-    def __init__(self):
+    def __init__(self, num_channel=None, wave_samples=None, score_samples=None):
+        self.num_channel = num_channel
+        self.wave_samples = wave_samples
+        self.score_samples = score_samples
         super(Net, self).__init__(
             c1=L.Convolution1D(1, 16, ksize=7, dilate=1),
             # b1=L.BatchNormalization(16),
@@ -30,29 +33,34 @@ class Net(Chain):
         """
         Args:
             X (Variable):
-                音声波形．shape==(*, samples_of_wave,) dtype==xp.float32
-                値は -1から+1の間に収まること推奨．
+                音声波形．shape==(*, num_channel, wave_samples) dtype==xp.float32
+                値は ±1 に収まる程度のスケール．
         Returns:
             y (Variable):
-                「各音がその間に一度でも新規に鳴ったかどうか」の判定結果 (pre_sigmoid value)
-                 shape==(*, 128) dtype==xp.float32
+                「各音が各時刻に鳴っているかどうか」の判定結果 (pre_sigmoid value)
+                 shape==(*, 128, score_samples) dtype==xp.float32
         """
-        h = F.expand_dims(X, axis=1)
-        h = F.relu(self.c1(h))
+        assert X.shape[1:] == (self.num_channel, self.wave_samples)
+        h = X
+        h = F.relu(self.c1(h)) + h
         # h = self.b1(h)
-        h = F.relu(self.c2(h))
+        h = F.relu(self.c2(h)) + h
         # h = self.b2(h)
-        h = F.relu(self.c3(h))
+        h = F.relu(self.c3(h)) + h
         # h = self.b3(h)
-        h = F.relu(self.c4(h))
+        h = F.relu(self.c4(h)) + h
         # h = self.b4(h)
-        h = F.relu(self.c5(h))
+        h = F.relu(self.c5(h)) + h
         # h = self.b5(h)
-        h = F.relu(self.c6(h))
-        h = self.c7(h)
-        if self.cnt == 0:
-            print(h.shape)
-        y = F.mean(h, axis=-1)
+        h = F.relu(self.c6(h)) + h
+        h = F.relu(self.c7(h)) + h
+
+        # TODO: padding
+        # TODO: pooling (max?)
+        # TODO: channelwise FC
+
+        y = h
+        assert y.shape[1:] == (128, self.score_samples)
         self.cnt += 1
         return y
 
@@ -61,23 +69,23 @@ class Net(Chain):
         """
         Args:
             y (Variable) 上参照
-            t (Variable) shape==(*, 2, 128, samples_of_score) dtype==xp.int32
+            t (Variable) shape==(*, 2, 128, score_samples)) dtype==xp.int32
         """
-        return F.sigmoid_cross_entropy(y, t[:,1,:,:].max(axis=-1))
+        return F.sigmoid_cross_entropy(y, t[:, 0, :, :])
 
     @staticmethod
     def accfun(y, t):
         """
         Args:
             y (Variable) 上参照
-            t (Variable) shape==(*, 2, 128, samples_of_score) dtype==xp.int32
+            t (Variable) shape==(*, 2, 128, score_samples)) dtype==xp.int32
         Returns:
             (P, R, F, support)
                 それぞれ type は xp.ndarray
                 P, R, F : shape==(), dtype==xp.float64
                 support : shape==(2,), dtype==xp.int64
         """
-        return binary_classification_summary(y, t[:,1,:,:].max(axis=-1))
+        return binary_classification_summary(y, t[:, 0, :, :])
 
 
 class NoCQTModel(object):
@@ -88,10 +96,10 @@ class NoCQTModel(object):
     def fit(self, midis, eval_midis=None, **kwargs):
         """
         Args:
-            midis (iterable of str, or MidiDataset):
-                midi 形式のファイルへのパスを各要素に持つ iterable.
+            midis (MidiDataset):
 
-            TODO: どちらかの形式に絞りたい．
+            eval_midis (None / MidiDataset):
+
         """
 
         # デフォルトの設定．
