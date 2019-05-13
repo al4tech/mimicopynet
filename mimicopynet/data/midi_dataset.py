@@ -28,7 +28,7 @@ def get_error_message(sys_exc_info=None):
 
 class MyInstrument(pretty_midi.Instrument):
     # OVERRIDE
-    def fluidsynth(self, sf2_path, fs=44100, rec_range=(None, None)):
+    def fluidsynth(self, sf2_path, fs=44100, rec_range=(None, None), num_channel=1):
         """Synthesize using fluidsynth.
         Parameters
         ----------
@@ -38,10 +38,18 @@ class MyInstrument(pretty_midi.Instrument):
             Path to a .sf2 file.
             Default ``None``, which uses the TimGM6mb.sf2 file included with
             ``pretty_midi``.
+        rec_range : (rec_start, rec_end)
+            rec_start : float / None
+            rec_end : float / None
+                specify recording interval.
+        num_channel : 1 or 2
+            monaural or stereo
+
         Returns
         -------
-        synthesized : np.ndarray
+        synthesized : np.ndarray (shape==(wave_samples, num_channel), dtype==np.float)
             Waveform of the MIDI data, synthesized at ``fs``.
+            scale order : 32768
         """
         # If sf2_path is None, use the included TimGM6mb.sf2 path
         # if sf2_path is None:
@@ -109,7 +117,7 @@ class MyInstrument(pretty_midi.Instrument):
         rec_end_sample = total_sample if rec_end_sec is None else int(round(fs * rec_end_sec))
 
         # Pre-allocate output array
-        synthesized = np.zeros(rec_end_sample - rec_start_sample)
+        synthesized = np.zeros([rec_end_sample - rec_start_sample, num_channel], dtype=np.float32)
 
         # Iterate over all events
         for event in event_list:
@@ -137,11 +145,19 @@ class MyInstrument(pretty_midi.Instrument):
             if rec_ended:
                 break
 
-            # 現在の状態で end - current_sample サンプル発音した場合の波形を受け取っている（同時に，fl の内部時刻がこの幅だけ進む？）
-            samples = fl.get_samples(end - current_sample)[::2]
-            # TODO このスライシングこれでいいの((R+L)/2がちゃんと取れている？)
-            
-            synthesized[current_sample-rec_start_sample:end-rec_start_sample] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
+            if num_channel == 1:
+                # 現在の状態で end - current_sample サンプル発音した場合の波形を受け取っている（同時に，fl の内部時刻がこの幅だけ進む？）
+                samples = fl.get_samples(end - current_sample)[::2]
+                # NOTE: get_samples の返り値は dtype==np.int16 です．
+                # TODO このスライシングこれでいいの((R+L)/2がちゃんと取れている？)
+                synthesized[current_sample-rec_start_sample:end-rec_start_sample, 0] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
+            elif num_channel == 2:
+                samples = fl.get_samples(end - current_sample).reshape(-1, 2)
+                # TODO RとLがちゃんと取れているか？
+                synthesized[current_sample-rec_start_sample:end-rec_start_sample] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
+                # TODO 1 のケースと 2 のケースをまとめる？
+            else:
+                raise ValueError('num_channel == {}'.format(num_channel))
             # Increment the current sample
             current_time += event[0]
         # Close fluidsynth
@@ -305,26 +321,38 @@ class MidiSampler(object):
         for inst in self.midi_data.instruments:
             inst.__class__ = MyInstrument
 
-    def sample(self, length_sec, wave_sr=44100, score_sr=44100/512, no_drum=False, num_part=None, sf2_path=None, verbose=False):
+    def sample(self, length_sec, wave_sr=44100, score_sr=44100/512, allow_drum=True, num_part=None, sf2_path=None, program=None, num_channel=1, verbose=False):
         """
         指定された秒数のデータをランダムにサンプリングして返す．
         ------
         Args:
             length_sec (float):
                 欲しい秒数．長すぎる場合は曲全体が返る．
-            no_drum (bool):
-                これを指定した場合は，ドラムパートは返らなくなります．
-            num_part (int or None):
+            wave_sr (float):
+                wave のサンプリングレート．
+            score_sr (float):
+                score のサンプリングレート．
+            allow_drum (bool):
+                ドラムパートを許容するか否か．
+            num_part (None / int):
                 指定されたパート数だけランダムに選んで返します．
                 None または多すぎる場合は，返りうる全パートを返します．
+            program (None / list of int)
+                許容する MIDI 音色プログラム番号(0-127)のリスト．
+                None の場合は，全て許容されます．
+            num_channel (1 or 2)
+                wave のモノラル or ステレオ
 
         Returns:
             wave:
-                shape == (パート数, wave_samples)
+                shape == (パート数, wave_samples, num_channel)
+                値のスケールは ±32768 程度（この範囲内であることは保証されない）．
             score:
                 shape == (パート数, ノートナンバー, score_samples)
+                ノートオンからノートオフまでが存在する箇所にベロシティ値(0-127)が加算された配列です
             score_onset:
                 shape == (パート数, ノートナンバー, score_samples)
+                ノートオンの箇所にベロシティ値(0-127)が加算された配列です
 
             ※ wave_samples と score_samples は次式により計算されます：
                 wave_samples = int(round(length_sec * wave_sr))
@@ -336,10 +364,10 @@ class MidiSampler(object):
             import matplotlib.pyplot as plt
             import mimicopynet as mcn
             ms = mcn.data.MidiSampler('hoge.mid')
-            wave, score, onset = ms.sample(3.0, num_part=2, no_drum=True)
+            wave, score, onset = ms.sample(3.0, num_part=2, allow_drum=True)
 
             # listen to sound
-            mcn.ipython_utils.show_audio(np.mean(wave, axis=0).reshape(-1, 1), 44100)
+            mcn.ipython_utils.show_audio(np.sum(wave, axis=0), 44100)
 
             # visualize onset
             plt.imshow(np.sum(onset, axis=0).astype(np.bool), origin='lower')
@@ -358,41 +386,48 @@ class MidiSampler(object):
         total_length_sec = self.midi_data.get_end_time()
         start_sec = np.random.rand() * (total_length_sec + length_sec) - length_sec
         end_sec = start_sec + length_sec
-        
+
         # 取得位置の決定（サンプル数）
         start_wave_sample = int(np.floor(start_sec * wave_sr))
         end_wave_sample = start_wave_sample + wave_samples
         start_score_sample = int(np.floor(start_sec * score_sr))
         end_score_sample = start_score_sample + score_samples
 
-        # パートの選択．
-        if no_drum:
+        # 許容されるパートを調べる．
+        is_possible = np.ones(len(self.midi_data.instruments), dtype=np.bool)
+        if not allow_drum:
             is_drum = np.array([inst.is_drum for inst in self.midi_data.instruments], dtype=np.bool)
-            possible_parts = np.flatnonzero(is_drum == False)
-        else:
-            possible_parts = np.arange(len(self.midi_data.instruments))
+            is_possible = np.logical_and(is_possible, np.logical_not(is_drum))
+        if program is not None:
+            is_allowed_program = np.array([inst.program in program for inst in self.midi_data.instruments], dtype=np.bool)
+            is_possible = np.logical_and(is_possible, is_allowed_program)
 
+        # パートのランダム選択．
+        possible_parts = np.flatnonzero(is_possible)
         if num_part is None:
             parts = possible_parts
         else:
             num_part = min(num_part, len(possible_parts))
-            parts = np.sort(np.random.choice(possible_parts, num_part, replace=False))   
+            parts = np.sort(np.random.choice(possible_parts, num_part, replace=False))
 
         ts.append(time.time())
 
         # 少しマージンをつけて録音をする（「最初から鳴っている音」を収録するため）
-        pre_margin_samples, post_margin_samples = 44100, 441
+        pre_margin_samples = int(round(wave_sr * 1.0))
+        post_margin_samples = int(round(wave_sr * 0.01))
         rec_range = ((start_wave_sample - pre_margin_samples)/wave_sr, (end_wave_sample + post_margin_samples)/wave_sr)
-        wave = np.zeros([len(parts), wave_samples], dtype=np.float32)
+
+        # 録音
+        wave = np.zeros([len(parts), wave_samples, num_channel], dtype=np.float32)
         for i, p in enumerate(parts):
             inst = self.midi_data.instruments[p]
-            wave_with_margin = inst.fluidsynth(fs=wave_sr, sf2_path=sf2_path, rec_range=rec_range)
+            wave_with_margin = inst.fluidsynth(fs=wave_sr, sf2_path=sf2_path, rec_range=rec_range, num_channel=num_channel)
             # wave からマージンを取り除き， (start_sec, end_sec) に相当する部分を切り出す．
             wave[i] = wave_with_margin[pre_margin_samples:pre_margin_samples+wave_samples]
 
         ts.append(time.time())
 
-        # 次はスコア情報
+        # スコア情報の取得
         rec_range = (start_score_sample/score_sr, end_score_sample/score_sr)
         score_hold = np.zeros([len(parts), 128, score_samples], dtype=np.float32)
         score_onset = np.zeros([len(parts), 128, score_samples], dtype=np.float32)
@@ -406,16 +441,20 @@ class MidiSampler(object):
         ts = np.array(ts)
 
         if verbose:
+            print('position (sec): {:.1f}-{:.1f} (total: {:.1f})'.format(
+                start_sec, end_sec, total_length_sec))
+            print('parts: {} (total: {})'.format(parts, len(self.midi_data.instruments)))
+            for p in parts:
+                print('    [{}] program: {}, name: {}'.format(p, self.midi_data.instruments[p].program, self.midi_data.instruments[p].name))
             print('synthesizing wave: {:.3f} sec'.format(ts[2] - ts[1]))
             print('fetching score: {:.3f} sec'.format(ts[3] - ts[2]))
-            print('start_sec: {:.1f}'.format(start_sec))
 
         return wave, score_hold, score_onset
 
 
 
 class MidiDataset(dataset.DatasetMixin):
-    def __init__(self, midis, size, sf2_path, length_sec=1.0, no_drum=True, num_part=3, gpu=-1):
+    def __init__(self, midis, size, sf2_path, length_sec=1.0, num_part=3, allow_drum=False, program=None, num_channel=1, ):
         """
         MIDIファイルから直接データを生成する．
         注意： この Dataset を SerialIterator に渡すとき，shuffle=False にしてください．
@@ -429,14 +468,18 @@ class MidiDataset(dataset.DatasetMixin):
                 WSH5形式のファイルへのパスを表す文字列の iterable
             size (int):
                 データセットのサイズ．これは「1エポック」の件数を決めるためだけに用いられる．
-            length_sec (float or callable):
+            length_sec (float / callable):
                 1つのデータに含まれる秒数．定数で与えるか，レベル(int)を引数に float 値を返す callable を指定．
-            no_drum (bool or callable):
-                ドラムパートを禁止するか否か．定数で与えるか，レベル(int)を引数に bool 値を返す callable を指定．
-            num_part (int or callable):
-                抽出するパート数．定数で与えるか，レベル(int)を引数に int 値を返す callable を指定．
-            gpu (int):
-
+            allow_drum (bool / callable):
+                ドラムパートを許容するか否か．定数で与えるか，レベル(int)を引数に bool 値を返す callable を指定．
+            num_part (None / int / callable):
+                マージするパート数．定数で与えるか，レベル(int)を引数に int 値を返す callable を指定．
+                None の場合は，選択されうる全パートがマージされます．
+            program (None / list of int / callable)
+                許容する MIDI 音色プログラム番号(0-127)のリスト．
+                None の場合は，全て許容されます．
+            num_channel (1 or 2)
+                wave のモノラル or ステレオ
         """
         self.midi_samplers = []
         for m in tqdm(list(midis)):
@@ -475,10 +518,13 @@ class MidiDataset(dataset.DatasetMixin):
         self.length_sec = length_sec
         self.num_part = num_part
         self.sf2_path = sf2_path
-        self.no_drum = no_drum
+        self.allow_drum = allow_drum
+        self.program = program
+        self.num_channel = num_channel
         self.level = 0
-        self.gpu = gpu
-        self.xp = np if gpu==-1 else cuda.cupy
+
+        # 統計情報を持っておきたい
+        self.stats_wave_amp = []
 
     def __len__(self):
         return self.size
@@ -491,11 +537,11 @@ class MidiDataset(dataset.DatasetMixin):
             i (int): インデクス（使われない）
         Returns:
             以下の tuple
-                wave (xp.ndarray):
-                    波形情報．shape==(samples_of_wave,) dtype==xp.float32
-                    正規化はされていないので注意！
-                score_feats (xp.ndarray):
-                    スコア情報．shape==(2, 128, samples) dtype==xp.int32
+                wave (np.ndarray):
+                    波形情報．shape==(samples_of_wave, num_channel) dtype==np.float32
+                    スケールは ±1 程度（この範囲に収まっていることは保証されない）
+                score_feats (np.ndarray):
+                    スコア情報．shape==(2, 128, samples) dtype==np.int32
                     score_feats[0] は hold 譜面．(ノートオンからオフまで 1 が入る．それ以外は 0)
                     score_feats[1] は onset 譜面．(ノートオンの瞬間だけ 1 が入る．それ以外は 0)
 
@@ -504,33 +550,41 @@ class MidiDataset(dataset.DatasetMixin):
         """
         ms = np.random.choice(self.midi_samplers)
         length_sec = self.length_sec(self.level) if callable(self.length_sec) else self.length_sec
-        no_drum = self.no_drum(self.level) if callable(self.no_drum) else self.no_drum
+        allow_drum = self.allow_drum(self.level) if callable(self.allow_drum) else self.allow_drum
         num_part = self.num_part(self.level) if callable(self.num_part) else self.num_part
-        wave, score, score_onset = ms.sample(length_sec, sf2_path=self.sf2_path, no_drum=no_drum, num_part=num_part, verbose=verbose)
+        wave, score, score_onset = ms.sample(
+            length_sec,
+            sf2_path=self.sf2_path,
+            allow_drum=allow_drum,
+            num_part=num_part,
+            program=self.program,
+            num_channel=self.num_channel,
+            verbose=verbose
+        )
         # TODO
         # 混ぜ合わせを 1:1 からずらしたり，逆位相にしたり，オフセット少しずらしたり，
         # ホワイトノイズなど加えたり，ピッチシフトしたり，など色々なオーグメンテーションができる．
 
         # パートのマージ．
-        wave = np.sum(wave, axis=0) # (wave_samples,)
-        score = np.sum(score, axis=0) # (pitch, score_samples)
-        score_onset = np.max(score_onset, axis=0) # (pitch, score_samples)
-        score_feats = np.stack([score, score_onset]) # (2, pitch, score_samples)
+        wave = np.sum(wave, axis=0)  # (wave_samples, num_channel)
+        score = np.sum(score, axis=0)  # (pitch, score_samples)
+        score_onset = np.max(score_onset, axis=0)  # (pitch, score_samples)
+        score_feats = np.stack([score, score_onset])  # (2, pitch, score_samples)
+        # NOTE: sum の代わりに mean 数を使うと，パート数の情報がリークしてしまうと考えられる？
+        #       (0パートの時に nan が出るという問題もある．)
 
         # wave の正規化
-        maxi = np.max(np.abs(wave))
-        if maxi > 0:
-            wave /= maxi
+        wave /= 32768
+        # NOTE: 最大絶対値での正規化は「無音＋微小ノイズ」も増幅してしまうので避ける．
+        # maxi = np.max(np.abs(wave))
+        # if maxi > 0:
+        #     wave /= maxi
 
         # score のバイナリ化．
         score_feats = score_feats.astype(np.bool).astype(np.int32)
 
-        if self.gpu != -1:
-            wave = cuda.to_gpu(wave)
-            score_feats = cuda.to_gpu(score_feats)
-        # TODO GPUに転送するタイミングはもっと遅い方が効率的かも（例えばバッチを組んでからとか？）
+        # 統計情報の更新
+        self.stats_wave_amp.append(np.max(np.abs(wave)))
 
         return wave, score_feats
-
-
 
