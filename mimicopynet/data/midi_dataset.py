@@ -148,7 +148,7 @@ class MyInstrument(pretty_midi.Instrument):
             samples = fl.get_samples(end - current_sample).reshape(-1, 2)
             # NOTE: get_samples の返り値は dtype==np.int16 です．
             if num_channel == 1:
-                samples = np.mean(samples.astype(np.float32), axis=1)
+                samples = np.mean(samples.astype(np.float32), axis=1).reshape(-1, 1)
             synthesized[current_sample-rec_start_sample:end-rec_start_sample] += samples[:len(synthesized) - (current_sample-rec_start_sample)]
 
             # Increment the current sample
@@ -314,7 +314,7 @@ class MidiSampler(object):
         for inst in self.midi_data.instruments:
             inst.__class__ = MyInstrument
 
-    def sample(self, length_sec, wave_sr=44100, score_sr=44100/512, allow_drum=True, num_part=None, sf2_path=None, program=None, num_channel=1, verbose=False):
+    def sample(self, length_sec, wave_sr=44100, score_sr=100, allow_drum=True, num_part=None, sf2_path=None, program=None, num_channel=1, verbose=False):
         """
         指定された秒数のデータをランダムにサンプリングして返す．
         ------
@@ -447,7 +447,7 @@ class MidiSampler(object):
 
 
 class MidiDataset(dataset.DatasetMixin):
-    def __init__(self, midis, size, sf2_path, length_sec=1.0, num_part=3, allow_drum=False, program=None, num_channel=1, ):
+    def __init__(self, midis, size, sf2_path, length_sec=1.0, num_part=3, allow_drum=False, program=None, num_channel=1, skip_silence=0):
         """
         MIDIファイルから直接データを生成する．
         注意： この Dataset を SerialIterator に渡すとき，shuffle=False にしてください．
@@ -473,6 +473,11 @@ class MidiDataset(dataset.DatasetMixin):
                 None の場合は，全て許容されます．
             num_channel (1 or 2)
                 wave のモノラル or ステレオ
+            skip_silence (float)
+                時に無音のサンプルを返してしまうことがあります．
+                が，この値を 0 より大きな値に設定すると，この確率で棄却できます．
+                （これを 1 にすると，無音が全くサンプルされなくなる代わりに，
+                　もし無音しかない midi ファイルを引いてしまうと，無限ループに陥ってしまいます．要注意．）
         """
         self.midi_samplers = []
         for m in tqdm(list(midis)):
@@ -506,6 +511,7 @@ class MidiDataset(dataset.DatasetMixin):
                 <class 'ValueError'>
                     MIDI file has a largest tick of 42949772801, it is likely corrupt
                 """
+        assert 0 <= skip_silence < 1
 
         self.size = size
         self.length_sec = length_sec
@@ -514,6 +520,9 @@ class MidiDataset(dataset.DatasetMixin):
         self.allow_drum = allow_drum
         self.program = program
         self.num_channel = num_channel
+        self.skip_silence = skip_silence
+        self.wave_sr = 44100
+        self.score_sr = 100
         self.level = 0
 
         # 統計情報を持っておきたい
@@ -521,6 +530,16 @@ class MidiDataset(dataset.DatasetMixin):
 
     def __len__(self):
         return self.size
+
+    def get_shape(self):
+        """
+        get_example が返す wave と score_feats の shape のみを返す．
+        """
+        wave_samples = int(round(self.length_sec * self.wave_sr))
+        score_samples = int(round(self.length_sec * self.score_sr))
+        wave_shape = (wave_samples, self.num_channel)
+        score_feats_shape = (2, 128, score_samples)
+        return wave_shape, score_feats_shape
 
     def get_example(self, i, verbose=False):
         """
@@ -531,10 +550,10 @@ class MidiDataset(dataset.DatasetMixin):
         Returns:
             以下の tuple
                 wave (np.ndarray):
-                    波形情報．shape==(samples_of_wave, num_channel) dtype==np.float32
+                    波形情報．shape==(wave_samples, num_channel) dtype==np.float32
                     スケールは ±1 程度（この範囲に収まっていることは保証されない）
                 score_feats (np.ndarray):
-                    スコア情報．shape==(2, 128, samples) dtype==np.int32
+                    スコア情報．shape==(2, 128, score_samples) dtype==np.int32
                     score_feats[0] は hold 譜面．(ノートオンからオフまで 1 が入る．それ以外は 0)
                     score_feats[1] は onset 譜面．(ノートオンの瞬間だけ 1 が入る．それ以外は 0)
 
@@ -545,15 +564,26 @@ class MidiDataset(dataset.DatasetMixin):
         length_sec = self.length_sec(self.level) if callable(self.length_sec) else self.length_sec
         allow_drum = self.allow_drum(self.level) if callable(self.allow_drum) else self.allow_drum
         num_part = self.num_part(self.level) if callable(self.num_part) else self.num_part
-        wave, score, score_onset = ms.sample(
-            length_sec,
-            sf2_path=self.sf2_path,
-            allow_drum=allow_drum,
-            num_part=num_part,
-            program=self.program,
-            num_channel=self.num_channel,
-            verbose=verbose
-        )
+        while 1:
+            wave, score, score_onset = ms.sample(
+                length_sec,
+                wave_sr=self.wave_sr,
+                score_sr=self.score_sr,
+                sf2_path=self.sf2_path,
+                allow_drum=allow_drum,
+                num_part=num_part,
+                program=self.program,
+                num_channel=self.num_channel,
+                verbose=verbose
+            )
+            # 無音を確率的に棄却するための処理
+            if self.skip_silence > 0 and np.max(np.abs(wave)) <= 1:
+                # NOTE fluidsynth による合成は時に ±1 程度のノイズが混じる
+                if np.random.rand() < self.skip_silence:
+                    print('(silence then skipped)')
+                    continue
+                print('(silence but chosen)')
+            break
         # TODO
         # 混ぜ合わせを 1:1 からずらしたり，逆位相にしたり，オフセット少しずらしたり，
         # ホワイトノイズなど加えたり，ピッチシフトしたり，など色々なオーグメンテーションができる．
