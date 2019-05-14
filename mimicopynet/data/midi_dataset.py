@@ -447,7 +447,9 @@ class MidiSampler(object):
 
 
 class MidiDataset(dataset.DatasetMixin):
-    def __init__(self, midis, size, sf2_path, length_sec=1.0, num_part=3, allow_drum=False, program=None, num_channel=1, skip_silence=0):
+    def __init__(self, midis, size, sf2_path, length_sec=1.0, num_part=3,
+                 allow_drum=False, program=None, num_channel=1, skip_silence=0,
+                 wave_sr=44100, score_sr=100):
         """
         MIDIファイルから直接データを生成する．
         注意： この Dataset を SerialIterator に渡すとき，shuffle=False にしてください．
@@ -479,6 +481,8 @@ class MidiDataset(dataset.DatasetMixin):
                 （これを 1 にすると，無音が全くサンプルされなくなる代わりに，
                 　もし無音しかない midi ファイルを引いてしまうと，無限ループに陥ってしまいます．要注意．）
         """
+        assert 0 <= skip_silence < 1
+
         self.midi_samplers = []
         for m in tqdm(list(midis)):
             try:
@@ -511,7 +515,7 @@ class MidiDataset(dataset.DatasetMixin):
                 <class 'ValueError'>
                     MIDI file has a largest tick of 42949772801, it is likely corrupt
                 """
-        assert 0 <= skip_silence < 1
+        print('{} MIDI files are successfully loaded.'.format(len(self.midi_samplers)))
 
         self.size = size
         self.length_sec = length_sec
@@ -521,8 +525,8 @@ class MidiDataset(dataset.DatasetMixin):
         self.program = program
         self.num_channel = num_channel
         self.skip_silence = skip_silence
-        self.wave_sr = 44100
-        self.score_sr = 100
+        self.wave_sr = wave_sr
+        self.score_sr = score_sr
         self.level = 0
 
         # 統計情報を持っておきたい
@@ -580,9 +584,9 @@ class MidiDataset(dataset.DatasetMixin):
             if self.skip_silence > 0 and np.max(np.abs(wave)) <= 1:
                 # NOTE fluidsynth による合成は時に ±1 程度のノイズが混じる
                 if np.random.rand() < self.skip_silence:
-                    print('(silence then skipped)')
+                    if verbose: print('(silence then skipped)')
                     continue
-                print('(silence but chosen)')
+                if verbose: print('(silence but chosen)')
             break
         # TODO
         # 混ぜ合わせを 1:1 からずらしたり，逆位相にしたり，オフセット少しずらしたり，

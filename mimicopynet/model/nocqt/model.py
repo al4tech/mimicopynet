@@ -14,19 +14,22 @@ class Net(Chain):
         self.num_channel = num_channel
         self.wave_samples = wave_samples
         self.score_samples = score_samples
+        assert self.wave_samples % self.score_samples == 0, 'wave_samples should be multiple of score_samples'
         super(Net, self).__init__(
-            c1=L.Convolution1D(1, 16, ksize=7, dilate=1),
+            c1=L.Convolution1D(1, 16, ksize=7, dilate=1, pad=1 * 3),
             # b1=L.BatchNormalization(16),
-            c2=L.Convolution1D(16, 16, ksize=7, dilate=4),
+            c2=L.Convolution1D(16, 16, ksize=7, dilate=4, pad=4 * 3),
             # b2=L.BatchNormalization(16),
-            c3=L.Convolution1D(16, 16, ksize=7, dilate=16),
+            c3=L.Convolution1D(16, 16, ksize=7, dilate=16, pad=16 * 3),
             # b3=L.BatchNormalization(16),
-            c4=L.Convolution1D(16, 16, ksize=7, dilate=64),
+            c4=L.Convolution1D(16, 16, ksize=7, dilate=64, pad=64 * 3),
             # b4=L.BatchNormalization(16),
-            c5=L.Convolution1D(16, 16, ksize=7, dilate=256),
+            c5=L.Convolution1D(16, 16, ksize=7, dilate=256, pad=256 * 3),
             # b5=L.BatchNormalization(16),
-            c6=L.Convolution1D(16, 16, ksize=7, dilate=1024),
-            c7=L.Convolution1D(16, 128, ksize=7, dilate=4096),
+            c6=L.Convolution1D(16, 16, ksize=7, dilate=1024, pad=1024 * 3),
+            c7=L.Convolution1D(16, 128, ksize=7, dilate=4096, pad=4096 * 3),
+            l1=L.Linear(128, 128),
+            l2=L.Linear(128, 128)
         )
         self.cnt = 0
     def __call__(self, X):
@@ -53,13 +56,22 @@ class Net(Chain):
         h = F.relu(self.c5(h)) + h
         # h = self.b5(h)
         h = F.relu(self.c6(h)) + h
-        h = F.relu(self.c7(h)) + h
+        h = F.relu(self.c7(h))
 
-        # TODO: padding
-        # TODO: pooling (max?)
-        # TODO: channelwise FC
+        # Pooling
+        stride = self.wave_samples // self.score_samples  # 割り切れることを assert してある．
+        h = F.max_pooling_1d(h, ksize=stride, pad=0, stride=stride)
 
-        y = h
+        assert h.shape[1:] == (128, self.score_samples)
+
+        # Channelwise FC
+        h = F.swapaxes(h, 1, 2)
+        h = F.reshape(h, [-1, 128])
+        h = F.relu(self.l1(h))
+        h = self.l2(h)
+        h = F.reshape(h, [-1, self.score_samples, 128])
+
+        y = F.swapaxes(h, 1, 2)
         assert y.shape[1:] == (128, self.score_samples)
         self.cnt += 1
         return y
@@ -108,7 +120,8 @@ class NoCQTModel(object):
             'bs_eval': 10,
             'gpu': -1,
             'result_dir': 'result',
-            'num_epoch': 100
+            'num_epoch': 100,
+            'num_channel': 1,
         }
         # train_size = 10000
         # eval_size = 1000
@@ -133,8 +146,11 @@ class NoCQTModel(object):
                 raise ValueError
                 # dataset_eval = MidiDataset(eval_midis, eval_size, length_sec=length_sec, no_drum=no_drum, num_part=num_part)
 
+        # データセットが繰り出してくるデータの shape を確認
+        wave_shape, score_feats_shape = dataset_train.get_shape()
+
         # Chain の準備
-        net = Net()
+        net = Net(num_channel=wave_shape[0], wave_samples=wave_shape[1], score_samples=score_feats_shape[2])
         mdl = PRFClassifier(net, lossfun=net.lossfun, accfun=net.accfun)
         if conf['gpu'] >= 0:
             cuda.get_device(conf['gpu']).use()
