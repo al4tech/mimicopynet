@@ -7,13 +7,14 @@ from chainer import functions as F
 from chainer import links as L
 
 from ...data import MidiDataset
-from ...chainer_utils import f_measure_accuracy, PRFClassifier, binary_classification_summary
+from ...chainer_utils import f_measure_accuracy, PRFClassifier, binary_classification_summary, sigmoid_cross_entropy
 
 class Net(Chain):
-    def __init__(self, num_channel=None, wave_samples=None, score_samples=None):
+    def __init__(self, num_channel=None, wave_samples=None, score_samples=None, class_weight=None):
         self.num_channel = num_channel
         self.wave_samples = wave_samples
         self.score_samples = score_samples
+        self.class_weight = class_weight
         assert self.wave_samples % self.score_samples == 0, 'wave_samples should be multiple of score_samples'
         super(Net, self).__init__(
             c1=L.Convolution1D(1, 16, ksize=7, dilate=1, pad=1 * 3),
@@ -45,7 +46,7 @@ class Net(Chain):
         """
         assert X.shape[1:] == (self.num_channel, self.wave_samples)
         h = X
-        h = F.relu(self.c1(h)) + h
+        h = F.relu(self.c1(h)) + h  # (bs, 16, 44100) + (bs, 1, 44100) is possible
         # h = self.b1(h)
         h = F.relu(self.c2(h)) + h
         # h = self.b2(h)
@@ -76,17 +77,17 @@ class Net(Chain):
         self.cnt += 1
         return y
 
-    @staticmethod
-    def lossfun(y, t):
+    # @staticmethod
+    def lossfun(self, y, t):
         """
         Args:
             y (Variable) 上参照
             t (Variable) shape==(*, 2, 128, score_samples)) dtype==xp.int32
         """
-        return F.sigmoid_cross_entropy(y, t[:, 0, :, :])
+        return sigmoid_cross_entropy(y, t[:, 0, :, :], class_weight=self.class_weight)
 
-    @staticmethod
-    def accfun(y, t):
+    # @staticmethod
+    def accfun(self, y, t):
         """
         Args:
             y (Variable) 上参照
@@ -121,6 +122,7 @@ class NoCQTModel(object):
             'result_dir': 'result',
             'num_epoch': 100,
             'num_channel': 1,
+            'class_weight': None
         }
         # train_size = 10000
         # eval_size = 1000
@@ -149,7 +151,7 @@ class NoCQTModel(object):
         wave_shape, score_feats_shape = dataset_train.get_shape()
 
         # Chain の準備
-        net = Net(num_channel=wave_shape[0], wave_samples=wave_shape[1], score_samples=score_feats_shape[2])
+        net = Net(num_channel=wave_shape[0], wave_samples=wave_shape[1], score_samples=score_feats_shape[2], class_weight=conf['class_weight'])
         mdl = PRFClassifier(net, lossfun=net.lossfun, accfun=net.accfun)
         if conf['gpu'] >= 0:
             cuda.get_device(conf['gpu']).use()
