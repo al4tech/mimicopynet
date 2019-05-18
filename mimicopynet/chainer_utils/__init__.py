@@ -9,3 +9,4 @@ Created on Thu Dec 22 16:15:47 2016
 from .f_measure_accuracy import f_measure_accuracy
 from .prf_classifier import PRFClassifier
 from .binary_classification_summary import binary_classification_summary
+from .sigmoid_cross_entropy import sigmoid_cross_entropy

@@ -104,7 +104,6 @@ class NoCQTModel(object):
     def __init__(self):
         pass
 
-
     def fit(self, midis, eval_midis=None, **kwargs):
         """
         Args:
